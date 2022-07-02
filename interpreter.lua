@@ -7,6 +7,8 @@ local numeral = (lpeg.R("09")^1 / tonumber) * space
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/") * space
 
+local OP = "(" * space
+local CP = ")" * space
 
 function fold (lst)
   local acc = lst[1]
@@ -27,10 +29,18 @@ function fold (lst)
 end
 
 
-local term = space * lpeg.Ct(numeral * (opM * numeral)^0) / fold
-local sum = space * lpeg.Ct(term * (opA * term)^0) / fold * -1
+local primary = lpeg.V"primary"
+local term = lpeg.V"term"
+local exp = lpeg.V"exp"
 
-local subject = "2 * 2 + 4 * 10"
+g = lpeg.P{"exp",
+  primary = numeral + OP * exp * CP,
+  term = space * lpeg.Ct(primary * (opM * primary)^0) / fold,
+  exp = space * lpeg.Ct(term * (opA * term)^0) / fold
+}
+
+g = g * -1
+
+local subject = "2 * (2 + 4) * 10"
 print(subject)
-print(pt.pt(sum:match(subject)))
-
+print(pt.pt(g:match(subject)))
