@@ -1,46 +1,52 @@
 
+
 local lpeg = require "lpeg"
 local pt = require "pt"
 
-local space = lpeg.S(" \n\t")^0
-local numeral = (lpeg.R("09")^1 / tonumber) * space
-local opA = lpeg.C(lpeg.S"+-") * space
-local opM = lpeg.C(lpeg.S"*/") * space
+----------------------------------------------------
+local function node (num)
+  return {tag = "number", val = tonumber(num)}
+end
 
-local OP = "(" * space
-local CP = ")" * space
+local space = lpeg.S(" \t\n")^0
+local numeral = lpeg.R("09")^1 / node  * space
 
-function fold (lst)
-  local acc = lst[1]
-  for i = 2, #lst, 2 do
-    if lst[i] == "+" then
-      acc = acc + lst[i + 1]
-    elseif lst[i] == "-" then
-      acc = acc - lst[i + 1]
-    elseif lst[i] == "*" then
-      acc = acc * lst[i + 1]
-    elseif lst[i] == "/" then
-      acc = acc / lst[i + 1]
-    else
-      error("unknown operator")
-    end
+
+
+local function parse (input)
+  return numeral:match(input)
+end
+
+----------------------------------------------------
+
+local function compile (ast)
+  if ast.tag == "number" then
+    return {"push", ast.val}
   end
-  return acc
+end
+
+----------------------------------------------------
+
+local function run (code, stack)
+  local pc = 1
+  local top = 0
+  while pc <= #code do
+    if code[pc] == "push" then
+      pc = pc + 1
+      top = top + 1
+      stack[top] = code[pc]
+    else error("unknown instruction")
+    end
+    pc = pc + 1
+  end
 end
 
 
-local primary = lpeg.V"primary"
-local term = lpeg.V"term"
-local exp = lpeg.V"exp"
-
-g = lpeg.P{"exp",
-  primary = numeral + OP * exp * CP,
-  term = space * lpeg.Ct(primary * (opM * primary)^0) / fold,
-  exp = space * lpeg.Ct(term * (opA * term)^0) / fold
-}
-
-g = g * -1
-
-local subject = "2 * (2 + 4) * 10"
-print(subject)
-print(pt.pt(g:match(subject)))
+local input = io.read("a")
+local ast = parse(input)
+print(pt.pt(ast))
+local code = compile(ast)
+print(pt.pt(code))
+local stack = {}
+run(code, stack)
+print(stack[1])
