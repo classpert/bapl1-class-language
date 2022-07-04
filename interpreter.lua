@@ -11,6 +11,7 @@ local numeral = lpeg.R("09")^1 / node  * space
 
 
 local opA = lpeg.C(lpeg.S"+-") * space
+local opM = lpeg.C(lpeg.S"*/") * space
 
 
 -- Convert a list {n1, "+", n2, "+", n3, ...} into a tree
@@ -23,8 +24,8 @@ local function foldBin (lst)
   return tree
 end
 
-
-local exp = lpeg.Ct(numeral * (opA * numeral)^0) / foldBin
+local term = lpeg.Ct(numeral * (opM * numeral)^0) / foldBin
+local exp = lpeg.Ct(term * (opA * term)^0) / foldBin * -1
 
 local function parse (input)
   return exp:match(input)
@@ -38,7 +39,8 @@ local function addCode (state, op)
 end
 
 
-local ops = {["+"] = "add", ["-"] = "sub"}
+local ops = {["+"] = "add", ["-"] = "sub",
+             ["*"] = "mul", ["/"] = "div"}
 
 local function codeExp (state, ast)
   if ast.tag == "number" then
@@ -70,6 +72,15 @@ local function run (code, stack)
       stack[top] = code[pc]
     elseif code[pc] == "add" then
       stack[top - 1] = stack[top - 1] + stack[top]
+      top = top - 1
+    elseif code[pc] == "sub" then
+      stack[top - 1] = stack[top - 1] - stack[top]
+      top = top - 1
+    elseif code[pc] == "mul" then
+      stack[top - 1] = stack[top - 1] * stack[top]
+      top = top - 1
+    elseif code[pc] == "div" then
+      stack[top - 1] = stack[top - 1] / stack[top]
       top = top - 1
     else error("unknown instruction")
     end
