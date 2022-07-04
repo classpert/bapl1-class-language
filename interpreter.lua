@@ -9,6 +9,8 @@ end
 local space = lpeg.S(" \t\n")^0
 local numeral = lpeg.R("09")^1 / node  * space
 
+local OP = "(" * space
+local CP = ")" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/") * space
@@ -24,11 +26,20 @@ local function foldBin (lst)
   return tree
 end
 
-local term = lpeg.Ct(numeral * (opM * numeral)^0) / foldBin
-local exp = lpeg.Ct(term * (opA * term)^0) / foldBin * -1
+local factor = lpeg.V"factor"
+local term = lpeg.V"term"
+local exp = lpeg.V"exp"
+
+grammar = lpeg.P{"exp",
+  factor = numeral + OP * exp * CP,
+  term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
+  exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
+}
+
+grammar = space * grammar * -1
 
 local function parse (input)
-  return exp:match(input)
+  return grammar:match(input)
 end
 
 ----------------------------------------------------
