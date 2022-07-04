@@ -1,5 +1,3 @@
-
-
 local lpeg = require "lpeg"
 local pt = require "pt"
 
@@ -12,17 +10,52 @@ local space = lpeg.S(" \t\n")^0
 local numeral = lpeg.R("09")^1 / node  * space
 
 
+local opA = lpeg.C(lpeg.S"+-") * space
+
+
+-- Convert a list {n1, "+", n2, "+", n3, ...} into a tree
+-- {...{ op = "+", e1 = {op = "+", e1 = n1, n2 = n2}, e2 = n3}...}
+local function foldBin (lst)
+  local tree = lst[1]
+  for i = 2, #lst, 2 do
+    tree = { tag = "binop", e1 = tree, op = lst[i], e2 = lst[i + 1] }
+  end
+  return tree
+end
+
+
+local exp = lpeg.Ct(numeral * (opA * numeral)^0) / foldBin
 
 local function parse (input)
-  return numeral:match(input)
+  return exp:match(input)
 end
 
 ----------------------------------------------------
 
-local function compile (ast)
+local function addCode (state, op)
+  local code = state.code
+  code[#code + 1] = op
+end
+
+
+local ops = {["+"] = "add", ["-"] = "sub"}
+
+local function codeExp (state, ast)
   if ast.tag == "number" then
-    return {"push", ast.val}
+    addCode(state, "push")
+    addCode(state, ast.val)
+  elseif ast.tag == "binop" then
+    codeExp(state, ast.e1)
+    codeExp(state, ast.e2)
+    addCode(state, ops[ast.op])
+  else error("invalid tree")
   end
+end
+
+local function compile (ast)
+  local state = { code = {} }
+  codeExp(state, ast)
+  return state.code
 end
 
 ----------------------------------------------------
@@ -35,6 +68,9 @@ local function run (code, stack)
       pc = pc + 1
       top = top + 1
       stack[top] = code[pc]
+    elseif code[pc] == "add" then
+      stack[top - 1] = stack[top - 1] + stack[top]
+      top = top - 1
     else error("unknown instruction")
     end
     pc = pc + 1
