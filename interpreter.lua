@@ -10,6 +10,10 @@ local function nodeVar (var)
   return {tag = "variable", var = var}
 end
 
+local function nodeAssgn (id, exp)
+  return {tag = "assgn", id = id, exp = exp}
+end
+
 local alpha = lpeg.R("AZ", "az")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
@@ -19,6 +23,8 @@ local numeral = lpeg.R("09")^1 / nodeNum  * space
 
 local ID = lpeg.C(alpha * alphanum^0) * space
 local var = ID / nodeVar
+
+local Assgn = "=" * space
 
 local OP = "(" * space
 local CP = ")" * space
@@ -41,7 +47,8 @@ local factor = lpeg.V"factor"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
 
-grammar = lpeg.P{"exp",
+grammar = lpeg.P{"stat",
+  stat = ID * Assgn * exp / nodeAssgn,
   factor = numeral + OP * exp * CP + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
@@ -79,9 +86,19 @@ local function codeExp (state, ast)
   end
 end
 
+
+local function codeStat (state, ast)
+  if ast.tag == "assgn" then
+    codeExp(state, ast.exp)
+    addCode(state, "store")
+    addCode(state, ast.id)
+  else error("invalid tree")
+  end
+end
+
 local function compile (ast)
   local state = { code = {} }
-  codeExp(state, ast)
+  codeStat(state, ast)
   return state.code
 end
 
@@ -112,6 +129,11 @@ local function run (code, mem, stack)
       local id = code[pc]
       top = top + 1
       stack[top] = mem[id]
+    elseif code[pc] == "store" then
+      pc = pc + 1
+      local id = code[pc]
+      mem[id] = stack[top]
+      top = top - 1        -- already corrected
     else error("unknown instruction")
     end
     pc = pc + 1
@@ -127,4 +149,4 @@ print(pt.pt(code))
 local stack = {}
 local mem = {k0 = 0, k1 = 1, k10 = 10}
 run(code, mem, stack)
-print(stack[1])
+print(mem.result)
