@@ -2,12 +2,23 @@ local lpeg = require "lpeg"
 local pt = require "pt"
 
 ----------------------------------------------------
-local function node (num)
+local function nodeNum (num)
   return {tag = "number", val = tonumber(num)}
 end
 
+local function nodeVar (var)
+  return {tag = "variable", var = var}
+end
+
+local alpha = lpeg.R("AZ", "az")
+local digit = lpeg.R("09")
+local alphanum = alpha + digit
+
 local space = lpeg.S(" \t\n")^0
-local numeral = lpeg.R("09")^1 / node  * space
+local numeral = lpeg.R("09")^1 / nodeNum  * space
+
+local ID = lpeg.C(alpha * alphanum^0) * space
+local var = ID / nodeVar
 
 local OP = "(" * space
 local CP = ")" * space
@@ -31,7 +42,7 @@ local term = lpeg.V"term"
 local exp = lpeg.V"exp"
 
 grammar = lpeg.P{"exp",
-  factor = numeral + OP * exp * CP,
+  factor = numeral + OP * exp * CP + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
 }
@@ -57,6 +68,9 @@ local function codeExp (state, ast)
   if ast.tag == "number" then
     addCode(state, "push")
     addCode(state, ast.val)
+  elseif ast.tag == "variable" then
+    addCode(state, "load")
+    addCode(state, ast.var)
   elseif ast.tag == "binop" then
     codeExp(state, ast.e1)
     codeExp(state, ast.e2)
@@ -73,7 +87,7 @@ end
 
 ----------------------------------------------------
 
-local function run (code, stack)
+local function run (code, mem, stack)
   local pc = 1
   local top = 0
   while pc <= #code do
@@ -93,6 +107,11 @@ local function run (code, stack)
     elseif code[pc] == "div" then
       stack[top - 1] = stack[top - 1] / stack[top]
       top = top - 1
+    elseif code[pc] == "load" then
+      pc = pc + 1
+      local id = code[pc]
+      top = top + 1
+      stack[top] = mem[id]
     else error("unknown instruction")
     end
     pc = pc + 1
@@ -106,5 +125,6 @@ print(pt.pt(ast))
 local code = compile(ast)
 print(pt.pt(code))
 local stack = {}
-run(code, stack)
+local mem = {k0 = 0, k1 = 1, k10 = 10}
+run(code, mem, stack)
 print(stack[1])
