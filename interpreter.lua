@@ -14,6 +14,10 @@ local function nodeAssgn (id, exp)
   return {tag = "assgn", id = id, exp = exp}
 end
 
+local function nodeRet (exp)
+  return {tag = "ret", exp = exp}
+end
+
 local function nodeSeq (st1, st2)
   if st2 == nil then
     return st1
@@ -34,6 +38,8 @@ local var = ID / nodeVar
 
 local Assgn = "=" * space
 local SC = ";" * space
+
+local ret = "return" * space
 
 local OP = "(" * space
 local CP = ")" * space
@@ -64,7 +70,9 @@ local block = lpeg.V"block"
 grammar = lpeg.P{"stats",
   stats = stat * (SC * stats)^-1 / nodeSeq,
   block = OB * stats * SC^-1 * CB,
-  stat = block + ID * Assgn * exp / nodeAssgn,
+  stat = block
+       + ID * Assgn * exp / nodeAssgn
+       + ret * exp / nodeRet,
   factor = numeral + OP * exp * CP + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
@@ -86,6 +94,7 @@ end
 
 local ops = {["+"] = "add", ["-"] = "sub",
              ["*"] = "mul", ["/"] = "div"}
+
 
 local function codeExp (state, ast)
   if ast.tag == "number" then
@@ -109,15 +118,21 @@ local function codeStat (state, ast)
     addCode(state, "store")
     addCode(state, ast.id)
   elseif ast.tag == "seq" then
-    codeStat(state, ast.st1)
-    codeStat(state, ast.st2)
+   codeStat(state, ast.st1)
+   codeStat(state, ast.st2)
+  elseif ast.tag == "ret" then
+    codeExp(state, ast.exp)
+    addCode(state, "ret")
   else error("invalid tree")
   end
 end
 
 local function compile (ast)
-  local state = { code = {} }
+  local state = { code = {}, vars = {}, nvars = 0 }
   codeStat(state, ast)
+  addCode(state, "push")
+  addCode(state, 0)
+  addCode(state, "ret")
   return state.code
 end
 
@@ -126,8 +141,15 @@ end
 local function run (code, mem, stack)
   local pc = 1
   local top = 0
-  while pc <= #code do
-    if code[pc] == "push" then
+  while true do
+  --[[
+  io.write("--> ")
+  for i = 1, top do io.write(stack[i], " ") end
+  io.write("\n", code[pc], "\n")
+  --]]
+    if code[pc] == "ret" then
+      return
+    elseif code[pc] == "push" then
       pc = pc + 1
       top = top + 1
       stack[top] = code[pc]
@@ -168,4 +190,4 @@ print(pt.pt(code))
 local stack = {}
 local mem = {}
 run(code, mem, stack)
-print(mem.result)
+print(stack[1])
