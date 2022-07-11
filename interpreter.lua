@@ -14,6 +14,14 @@ local function nodeAssgn (id, exp)
   return {tag = "assgn", id = id, exp = exp}
 end
 
+local function nodeSeq (st1, st2)
+  if st2 == nil then
+    return st1
+  else
+    return {tag = "seq", st1 = st1, st2 = st2}
+  end
+end
+
 local alpha = lpeg.R("AZ", "az")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
@@ -25,9 +33,12 @@ local ID = lpeg.C(alpha * alphanum^0) * space
 local var = ID / nodeVar
 
 local Assgn = "=" * space
+local SC = ";" * space
 
 local OP = "(" * space
 local CP = ")" * space
+local OB = "{" * space
+local CB = "}" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/") * space
@@ -46,9 +57,14 @@ end
 local factor = lpeg.V"factor"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
+local stat = lpeg.V"stat"
+local stats = lpeg.V"stats"
+local block = lpeg.V"block"
 
-grammar = lpeg.P{"stat",
-  stat = ID * Assgn * exp / nodeAssgn,
+grammar = lpeg.P{"stats",
+  stats = stat * (SC * stats)^-1 / nodeSeq,
+  block = OB * stats * SC^-1 * CB,
+  stat = block + ID * Assgn * exp / nodeAssgn,
   factor = numeral + OP * exp * CP + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
@@ -92,6 +108,9 @@ local function codeStat (state, ast)
     codeExp(state, ast.exp)
     addCode(state, "store")
     addCode(state, ast.id)
+  elseif ast.tag == "seq" then
+    codeStat(state, ast.st1)
+    codeStat(state, ast.st2)
   else error("invalid tree")
   end
 end
@@ -133,7 +152,7 @@ local function run (code, mem, stack)
       pc = pc + 1
       local id = code[pc]
       mem[id] = stack[top]
-      top = top - 1        -- already corrected
+      top = top - 1
     else error("unknown instruction")
     end
     pc = pc + 1
@@ -147,6 +166,6 @@ print(pt.pt(ast))
 local code = compile(ast)
 print(pt.pt(code))
 local stack = {}
-local mem = {k0 = 0, k1 = 1, k10 = 10}
+local mem = {}
 run(code, mem, stack)
 print(mem.result)
