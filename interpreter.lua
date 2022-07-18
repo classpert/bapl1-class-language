@@ -35,12 +35,11 @@ local alpha = lpeg.R("AZ", "az")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
 
+local comment = "#" * (lpeg.P(1) - "\n")^0
+
+
 local maxmatch = 0
-local space = lpeg.S(" \t\n")^0 *
-        lpeg.P(function (_,p)
-                 maxmatch = math.max(maxmatch, p);
-                 return true
-               end)
+local space = lpeg.V"space"
 
 
 local numeral = lpeg.R("09")^1 / nodeNum  * space
@@ -79,7 +78,8 @@ local stat = lpeg.V"stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 
-grammar = lpeg.P{"stats",
+grammar = lpeg.P{"prog",
+  prog = space * stats * -1,
   stats = stat * (SC * stats)^-1 / nodeSeq,
   block = OB * stats * SC^-1 * CB,
   stat = block
@@ -88,9 +88,12 @@ grammar = lpeg.P{"stats",
   factor = numeral + OP * exp * CP + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
+  space = (lpeg.S(" \t\n") + comment)^0
+            * lpeg.P(function (_,p)
+                       maxmatch = math.max(maxmatch, p);
+                       return true
+                     end)
 }
-
-grammar = space * grammar * -1
 
 
 local function syntaxError (input, max)
