@@ -47,15 +47,16 @@ local numeral = lpeg.R("09")^1 / nodeNum  * space
 local ID = lpeg.C(alpha * alphanum^0) * space
 local var = ID / nodeVar
 
-local Assgn = "=" * space
-local SC = ";" * space
 
-local ret = "return" * space
+local function T (t)
+  return t * space
+end
 
-local OP = "(" * space
-local CP = ")" * space
-local OB = "{" * space
-local CB = "}" * space
+
+local function Rw (t)
+  return t * -alphanum * space
+end
+
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/") * space
@@ -80,12 +81,12 @@ local block = lpeg.V"block"
 
 grammar = lpeg.P{"prog",
   prog = space * stats * -1,
-  stats = stat * (SC * stats)^-1 / nodeSeq,
-  block = OB * stats * SC^-1 * CB,
+  stats = stat * (T";" * stats)^-1 / nodeSeq,
+  block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + ID * Assgn * exp / nodeAssgn
-       + ret * exp / nodeRet,
-  factor = numeral + OP * exp * CP + var,
+       + ID * T"=" * exp / nodeAssgn
+       + Rw"return" * exp / nodeRet,
+  factor = numeral + T"(" * exp * T")" + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
   space = (lpeg.S(" \t\n") + comment)^0
