@@ -2,6 +2,11 @@ local lpeg = require "lpeg"
 local pt = require "pt"
 
 ----------------------------------------------------
+local function I (msg)
+  return lpeg.P(function () print(msg); return true end)
+end
+
+----------------------------------------------------
 local function nodeNum (num)
   return {tag = "number", val = tonumber(num)}
 end
@@ -30,7 +35,14 @@ local alpha = lpeg.R("AZ", "az")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
 
-local space = lpeg.S(" \t\n")^0
+local maxmatch = 0
+local space = lpeg.S(" \t\n")^0 *
+        lpeg.P(function (_,p)
+                 maxmatch = math.max(maxmatch, p);
+                 return true
+               end)
+
+
 local numeral = lpeg.R("09")^1 / nodeNum  * space
 
 local ID = lpeg.C(alpha * alphanum^0) * space
@@ -80,8 +92,20 @@ grammar = lpeg.P{"stats",
 
 grammar = space * grammar * -1
 
+
+local function syntaxError (input, max)
+  io.stderr:write("syntax error\n")
+  io.stderr:write(string.sub(input, max - 10, max - 1),
+        "|", string.sub(input, max, max + 11), "\n")
+end
+
 local function parse (input)
-  return grammar:match(input)
+  local res = grammar:match(input)
+  if (not res) then
+    syntaxError(input, maxmatch)
+    os.exit(1)
+  end
+  return res
 end
 
 ----------------------------------------------------
