@@ -1,3 +1,4 @@
+
 local lpeg = require "lpeg"
 local pt = require "pt"
 
@@ -121,9 +122,10 @@ local function parse (input)
 end
 
 ----------------------------------------------------
+local Compiler = { code = {}, vars = {}, nvars = 0 }
 
-local function addCode (state, op)
-  local code = state.code
+function Compiler:addCode (op)
+  local code = self.code
   code[#code + 1] = op
 end
 
@@ -132,55 +134,54 @@ local ops = {["+"] = "add", ["-"] = "sub",
              ["*"] = "mul", ["/"] = "div"}
 
 
-local function var2num (state, id)
-  local num = state.vars[id]
+function Compiler:var2num (id)
+  local num = self.vars[id]
   if not num then
-    num = state.nvars + 1
-    state.nvars = num
-    state.vars[id] = num
+    num = self.nvars + 1
+    self.nvars = num
+    self.vars[id] = num
   end
   return num
 end
 
 
-local function codeExp (state, ast)
+function Compiler:codeExp (ast)
   if ast.tag == "number" then
-    addCode(state, "push")
-    addCode(state, ast.val)
+    self:addCode("push")
+    self:addCode(ast.val)
   elseif ast.tag == "variable" then
-    addCode(state, "load")
-    addCode(state, var2num(state, ast.var))
+    self:addCode("load")
+    self:addCode(self:var2num(ast.var))
   elseif ast.tag == "binop" then
-    codeExp(state, ast.e1)
-    codeExp(state, ast.e2)
-    addCode(state, ops[ast.op])
+    self:codeExp(ast.e1)
+    self:codeExp(ast.e2)
+    self:addCode(ops[ast.op])
   else error("invalid tree")
   end
 end
 
 
-local function codeStat (state, ast)
+function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
-    codeExp(state, ast.exp)
-    addCode(state, "store")
-    addCode(state, var2num(state, ast.id))
+    self:codeExp(ast.exp)
+    self:addCode("store")
+    self:addCode(self:var2num(ast.id))
   elseif ast.tag == "seq" then
-    codeStat(state, ast.st1)
-    codeStat(state, ast.st2)
+    self:codeStat(ast.st1)
+    self:codeStat(ast.st2)
   elseif ast.tag == "ret" then
-    codeExp(state, ast.exp)
-    addCode(state, "ret")
+    self:codeExp(ast.exp)
+    self:addCode("ret")
   else error("invalid tree")
   end
 end
 
 local function compile (ast)
-  local state = { code = {}, vars = {}, nvars = 0 }
-  codeStat(state, ast)
-  addCode(state, "push")
-  addCode(state, 0)
-  addCode(state, "ret")
-  return state.code
+  Compiler:codeStat(ast)
+  Compiler:addCode("push")
+  Compiler:addCode(0)
+  Compiler:addCode("ret")
+  return Compiler.code
 end
 
 ----------------------------------------------------
