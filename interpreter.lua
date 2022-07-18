@@ -44,7 +44,14 @@ local space = lpeg.V"space"
 
 local numeral = lpeg.R("09")^1 / nodeNum  * space
 
-local ID = lpeg.C(alpha * alphanum^0) * space
+local reserved = {"return", "if"}
+local excluded = lpeg.P(false)
+for i = 1, #reserved do
+  excluded = excluded + reserved[i]
+end
+excluded = excluded * -alphanum
+
+local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
 local var = ID / nodeVar
 
 
@@ -54,6 +61,7 @@ end
 
 
 local function Rw (t)
+  assert(excluded:match(t))
   return t * -alphanum * space
 end
 
