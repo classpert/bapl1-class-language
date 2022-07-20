@@ -41,7 +41,7 @@ local space = lpeg.V"space"
 local numeral = lpeg.R("09")^1 / tonumber /
                      node("number", "val")  * space
 
-local reserved = {"return", "if"}
+local reserved = {"return", "if", "else"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
@@ -89,7 +89,8 @@ grammar = lpeg.P{"prog",
   stats = stat * (T";" * stats)^-1 / nodeSeq,
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + Rw"if" * exp * block / node("if1", "cond", "th")
+       + Rw"if" * exp * block * (Rw"else" * block)^-1
+           / node("if1", "cond", "th", "el")
        + ID * T"=" * exp / node("assgn", "id", "exp")
        + Rw"return" * exp / node("ret", "exp"),
   factor = numeral + T"(" * exp * T")" + var,
@@ -190,7 +191,14 @@ function Compiler:codeStat (ast)
     self:codeExp(ast.cond)
     local jmp = self:codeJmp("jmpZ")
     self:codeStat(ast.th)
-    self:fixJmp2here(jmp)
+    if ast.el == nil then
+      self:fixJmp2here(jmp)
+    else
+      local jmp2 = self:codeJmp("jmp")
+      self:fixJmp2here(jmp)
+      self:codeStat(ast.el)
+      self:fixJmp2here(jmp2)
+    end
   else error("invalid tree")
   end
 end
@@ -242,6 +250,8 @@ local function run (code, mem, stack)
       local id = code[pc]
       mem[id] = stack[top]
       top = top - 1
+    elseif code[pc] == "jmp" then
+      pc = code[pc + 1]
     elseif code[pc] == "jmpZ" then
       pc = pc + 1
       if stack[top] == 0 or stack[top] == nil then
