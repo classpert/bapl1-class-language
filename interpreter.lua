@@ -15,7 +15,7 @@ local function node (tag, ...)
   local code = string.format(
     "return function (%s) return {tag = '%s', %s} end",
     params, tag, fields)
-  return load(code)()
+  return assert(load(code))()
 end
 
 ----------------------------------------------------
@@ -89,6 +89,7 @@ grammar = lpeg.P{"prog",
   stats = stat * (T";" * stats)^-1 / nodeSeq,
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
+       + Rw"if" * exp * block / node("if1", "cond", "th")
        + ID * T"=" * exp / node("assgn", "id", "exp")
        + Rw"return" * exp / node("ret", "exp"),
   factor = numeral + T"(" * exp * T")" + var,
@@ -141,6 +142,23 @@ function Compiler:var2num (id)
 end
 
 
+function Compiler:currentPosition ()
+  return #self.code
+end
+
+
+function Compiler:codeJmp (op)
+  self:addCode(op)
+  self:addCode(0)
+  return self:currentPosition()
+end
+
+
+function Compiler:fixJmp2here (jmp)
+  self.code[jmp] = self:currentPosition()
+end
+
+
 function Compiler:codeExp (ast)
   if ast.tag == "number" then
     self:addCode("push")
@@ -168,6 +186,11 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
+  elseif ast.tag == "if1" then
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmp("jmpZ")
+    self:codeStat(ast.th)
+    self:fixJmp2here(jmp)
   else error("invalid tree")
   end
 end
@@ -218,6 +241,12 @@ local function run (code, mem, stack)
       pc = pc + 1
       local id = code[pc]
       mem[id] = stack[top]
+      top = top - 1
+    elseif code[pc] == "jmpZ" then
+      pc = pc + 1
+      if stack[top] == 0 or stack[top] == nil then
+        pc = code[pc]
+      end
       top = top - 1
     else error("unknown instruction")
     end
