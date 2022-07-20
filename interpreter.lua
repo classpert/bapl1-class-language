@@ -41,7 +41,7 @@ local space = lpeg.V"space"
 local numeral = lpeg.R("09")^1 / tonumber /
                      node("number", "val")  * space
 
-local reserved = {"return", "if", "else"}
+local reserved = {"return", "if", "else", "while"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
@@ -91,6 +91,7 @@ grammar = lpeg.P{"prog",
   stat = block
        + Rw"if" * exp * block * (Rw"else" * block)^-1
            / node("if1", "cond", "th", "el")
+       + Rw"while" * exp * block / node("while1", "cond", "body")
        + ID * T"=" * exp / node("assgn", "id", "exp")
        + Rw"return" * exp / node("ret", "exp"),
   factor = numeral + T"(" * exp * T")" + var,
@@ -148,7 +149,13 @@ function Compiler:currentPosition ()
 end
 
 
-function Compiler:codeJmp (op)
+function Compiler:codeJmpB (op, label)
+  self:addCode(op)
+  self:addCode(label)
+end
+
+
+function Compiler:codeJmpF (op)
   self:addCode(op)
   self:addCode(0)
   return self:currentPosition()
@@ -187,14 +194,21 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
+  elseif ast.tag == "while1" then
+    local ilabel = self:currentPosition()
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmpF("jmpZ")
+    self:codeStat(ast.body)
+    self:codeJmpB("jmp", ilabel)
+    self:fixJmp2here(jmp)
   elseif ast.tag == "if1" then
     self:codeExp(ast.cond)
-    local jmp = self:codeJmp("jmpZ")
+    local jmp = self:codeJmpF("jmpZ")
     self:codeStat(ast.th)
     if ast.el == nil then
       self:fixJmp2here(jmp)
     else
-      local jmp2 = self:codeJmp("jmp")
+      local jmp2 = self:codeJmpF("jmp")
       self:fixJmp2here(jmp)
       self:codeStat(ast.el)
       self:fixJmp2here(jmp2)
