@@ -7,23 +7,18 @@ local function I (msg)
   return lpeg.P(function () print(msg); return true end)
 end
 
+
+local function node (tag, ...)
+  local labels = table.pack(...)
+  local params = table.concat(labels, ", ")
+  local fields = string.gsub(params, "(%w+)", "%1 = %1")
+  local code = string.format(
+    "return function (%s) return {tag = '%s', %s} end",
+    params, tag, fields)
+  return load(code)()
+end
+
 ----------------------------------------------------
-local function nodeNum (num)
-  return {tag = "number", val = tonumber(num)}
-end
-
-local function nodeVar (var)
-  return {tag = "variable", var = var}
-end
-
-local function nodeAssgn (id, exp)
-  return {tag = "assgn", id = id, exp = exp}
-end
-
-local function nodeRet (exp)
-  return {tag = "ret", exp = exp}
-end
-
 local function nodeSeq (st1, st2)
   if st2 == nil then
     return st1
@@ -43,7 +38,8 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local numeral = lpeg.R("09")^1 / nodeNum  * space
+local numeral = lpeg.R("09")^1 / tonumber /
+                     node("number", "val")  * space
 
 local reserved = {"return", "if"}
 local excluded = lpeg.P(false)
@@ -53,7 +49,7 @@ end
 excluded = excluded * -alphanum
 
 local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
-local var = ID / nodeVar
+local var = ID / node("variable", "var")
 
 
 local function T (t)
@@ -93,8 +89,8 @@ grammar = lpeg.P{"prog",
   stats = stat * (T";" * stats)^-1 / nodeSeq,
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + ID * T"=" * exp / nodeAssgn
-       + Rw"return" * exp / nodeRet,
+       + ID * T"=" * exp / node("assgn", "id", "exp")
+       + Rw"return" * exp / node("ret", "exp"),
   factor = numeral + T"(" * exp * T")" + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
