@@ -77,6 +77,16 @@ local function foldBin (lst)
   return tree
 end
 
+
+local function foldIndex (lst)
+  local tree = lst[1]
+  for i = 2, #lst do
+    tree = { tag = "indexed", array = tree, index = lst[i] }
+  end
+  return tree
+end
+
+
 local lhs = lpeg.V"lhs"
 local factor = lpeg.V"factor"
 local term = lpeg.V"term"
@@ -95,8 +105,7 @@ grammar = lpeg.P{"prog",
        + Rw"while" * exp * block / node("while1", "cond", "body")
        + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp"),
-  lhs = var * T"[" * exp * T"]" / node("indexed", "array", "index")
-      + var,
+  lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
   factor = Rw"new" * T"[" * exp * T"]" / node("new", "size")
          + numeral
          + T"(" * exp * T")"
