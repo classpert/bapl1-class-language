@@ -41,7 +41,7 @@ local space = lpeg.V"space"
 local numeral = lpeg.R("09")^1 / tonumber /
                      node("number", "val")  * space
 
-local reserved = {"return", "if", "else", "while"}
+local reserved = {"return", "if", "else", "while", "new"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
@@ -77,6 +77,7 @@ local function foldBin (lst)
   return tree
 end
 
+local lhs = lpeg.V"lhs"
 local factor = lpeg.V"factor"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
@@ -92,9 +93,14 @@ grammar = lpeg.P{"prog",
        + Rw"if" * exp * block * (Rw"else" * block)^-1
            / node("if1", "cond", "th", "el")
        + Rw"while" * exp * block / node("while1", "cond", "body")
-       + ID * T"=" * exp / node("assgn", "id", "exp")
+       + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp"),
-  factor = numeral + T"(" * exp * T")" + var,
+  lhs = var * T"[" * exp * T"]" / node("indexed", "array", "index")
+      + var,
+  factor = Rw"new" * T"[" * exp * T"]" / node("new", "size")
+         + numeral
+         + T"(" * exp * T")"
+         + lhs,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
   space = (lpeg.S(" \t\n") + comment)^0
@@ -174,6 +180,13 @@ function Compiler:codeExp (ast)
   elseif ast.tag == "variable" then
     self:addCode("load")
     self:addCode(self:var2num(ast.var))
+  elseif ast.tag == "indexed" then
+    self:codeExp(ast.array)
+    self:codeExp(ast.index)
+    self:addCode("getarray")
+  elseif ast.tag == "new" then
+    self:codeExp(ast.size)
+    self:addCode("newarray")
   elseif ast.tag == "binop" then
     self:codeExp(ast.e1)
     self:codeExp(ast.e2)
@@ -183,11 +196,25 @@ function Compiler:codeExp (ast)
 end
 
 
-function Compiler:codeStat (ast)
-  if ast.tag == "assgn" then
+function Compiler:codeAssgn (ast)
+  local lhs = ast.lhs
+  if lhs.tag == "variable" then
     self:codeExp(ast.exp)
     self:addCode("store")
-    self:addCode(self:var2num(ast.id))
+    self:addCode(self:var2num(lhs.var))
+  elseif lhs.tag == "indexed" then
+    self:codeExp(lhs.array)
+    self:codeExp(lhs.index)
+    self:codeExp(ast.exp)
+    self:addCode("setarray")
+  else error("unkown tag")
+  end
+end
+  
+
+function Compiler:codeStat (ast)
+  if ast.tag == "assgn" then
+    self:codeAssgn(ast)
   elseif ast.tag == "seq" then
     self:codeStat(ast.st1)
     self:codeStat(ast.st2)
@@ -264,6 +291,20 @@ local function run (code, mem, stack)
       local id = code[pc]
       mem[id] = stack[top]
       top = top - 1
+    elseif code[pc] == "newarray" then
+      local size = stack[top]
+      stack[top] = { size = size }
+    elseif code[pc] == "getarray" then
+      local array = stack[top - 1]
+      local index = stack[top]
+      stack[top - 1] = array[index]
+      top = top - 1
+    elseif code[pc] == "setarray" then
+      local array = stack[top - 2]
+      local index = stack[top - 1]
+      local value = stack[top]
+      array[index] = value
+      top = top - 3
     elseif code[pc] == "jmp" then
       pc = code[pc + 1]
     elseif code[pc] == "jmpZ" then
