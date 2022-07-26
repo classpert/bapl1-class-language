@@ -7,23 +7,18 @@ local function I (msg)
   return lpeg.P(function () print(msg); return true end)
 end
 
+
+local function node (tag, ...)
+  local labels = table.pack(...)
+  local params = table.concat(labels, ", ")
+  local fields = string.gsub(params, "(%w+)", "%1 = %1")
+  local code = string.format(
+    "return function (%s) return {tag = '%s', %s} end",
+    params, tag, fields)
+  return assert(load(code))()
+end
+
 ----------------------------------------------------
-local function nodeNum (num)
-  return {tag = "number", val = tonumber(num)}
-end
-
-local function nodeVar (var)
-  return {tag = "variable", var = var}
-end
-
-local function nodeAssgn (id, exp)
-  return {tag = "assgn", id = id, exp = exp}
-end
-
-local function nodeRet (exp)
-  return {tag = "ret", exp = exp}
-end
-
 local function nodeSeq (st1, st2)
   if st2 == nil then
     return st1
@@ -43,9 +38,10 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local numeral = lpeg.R("09")^1 / nodeNum  * space
+local numeral = lpeg.R("09")^1 / tonumber /
+                     node("number", "val")  * space
 
-local reserved = {"return", "if"}
+local reserved = {"return", "if", "else", "while"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
@@ -53,7 +49,7 @@ end
 excluded = excluded * -alphanum
 
 local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
-local var = ID / nodeVar
+local var = ID / node("variable", "var")
 
 
 local function T (t)
@@ -93,8 +89,11 @@ grammar = lpeg.P{"prog",
   stats = stat * (T";" * stats)^-1 / nodeSeq,
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + ID * T"=" * exp / nodeAssgn
-       + Rw"return" * exp / nodeRet,
+       + Rw"if" * exp * block * (Rw"else" * block)^-1
+           / node("if1", "cond", "th", "el")
+       + Rw"while" * exp * block / node("while1", "cond", "body")
+       + ID * T"=" * exp / node("assgn", "id", "exp")
+       + Rw"return" * exp / node("ret", "exp"),
   factor = numeral + T"(" * exp * T")" + var,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
@@ -145,6 +144,29 @@ function Compiler:var2num (id)
 end
 
 
+function Compiler:currentPosition ()
+  return #self.code
+end
+
+
+function Compiler:codeJmpB (op, label)
+  self:addCode(op)
+  self:addCode(label)
+end
+
+
+function Compiler:codeJmpF (op)
+  self:addCode(op)
+  self:addCode(0)
+  return self:currentPosition()
+end
+
+
+function Compiler:fixJmp2here (jmp)
+  self.code[jmp] = self:currentPosition()
+end
+
+
 function Compiler:codeExp (ast)
   if ast.tag == "number" then
     self:addCode("push")
@@ -172,6 +194,25 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
+  elseif ast.tag == "while1" then
+    local ilabel = self:currentPosition()
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmpF("jmpZ")
+    self:codeStat(ast.body)
+    self:codeJmpB("jmp", ilabel)
+    self:fixJmp2here(jmp)
+  elseif ast.tag == "if1" then
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmpF("jmpZ")
+    self:codeStat(ast.th)
+    if ast.el == nil then
+      self:fixJmp2here(jmp)
+    else
+      local jmp2 = self:codeJmpF("jmp")
+      self:fixJmp2here(jmp)
+      self:codeStat(ast.el)
+      self:fixJmp2here(jmp2)
+    end
   else error("invalid tree")
   end
 end
@@ -222,6 +263,14 @@ local function run (code, mem, stack)
       pc = pc + 1
       local id = code[pc]
       mem[id] = stack[top]
+      top = top - 1
+    elseif code[pc] == "jmp" then
+      pc = code[pc + 1]
+    elseif code[pc] == "jmpZ" then
+      pc = pc + 1
+      if stack[top] == 0 or stack[top] == nil then
+        pc = code[pc]
+      end
       top = top - 1
     else error("unknown instruction")
     end
