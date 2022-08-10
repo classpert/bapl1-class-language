@@ -97,12 +97,16 @@ local stat = lpeg.V"stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 local funcDec = lpeg.V"funcDec"
+local args = lpeg.V"args"
+local params = lpeg.V"params"
 
 grammar = lpeg.P{"prog",
   prog = space * lpeg.Ct(funcDec^1) * -1,
 
-  funcDec = Rw"function" * ID * T"(" * T")" * block
-              / node("function", "name", "body"),
+  funcDec = Rw"function" * ID * T"(" * params * T")" * block
+              / node("function", "name", "params", "body"),
+
+  params = lpeg.Ct((ID * (T"," * ID)^0)^-1),
 
   stats = stat * (T";" * stats)^-1 / nodeSeq,
 
@@ -119,7 +123,9 @@ grammar = lpeg.P{"prog",
 
   lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
 
-  call = ID * T"(" * T")" / node("call", "fname"),
+  call = ID * T"(" * args * T")" / node("call", "fname", "args"),
+
+  args = lpeg.Ct((exp * (T"," * exp)^0)^-1),
 
   factor = Rw"new" * T"[" * exp * T"]" / node("new", "size")
          + numeral
@@ -217,7 +223,10 @@ end
 function Compiler:codeCall (ast)
   local func = self.funcs[ast.fname]
   if not func then
-    error("undefined function " .. fname)
+    error("undefined function " .. ast.fname)
+  end
+  if #ast.args ~= #func.params then
+    error("wrong number of arguments calling " .. ast.fname)
   end
   self:addCode("call")
   self:addCode(func.code)
@@ -334,7 +343,7 @@ end
 
 function Compiler:codeFunction (ast)
   local code = {}
-  self.funcs[ast.name] = { code = code }
+  self.funcs[ast.name] = {code = code, params = ast.params}
   self.code = code
   self:codeStat(ast.body)
   self:addCode("push")
