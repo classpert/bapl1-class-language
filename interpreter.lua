@@ -203,6 +203,17 @@ function Compiler:fixJmp2here (jmp)
 end
 
 
+function Compiler:findLocal (name)
+  local vars = self.locals
+  for i = #vars, 1, -1 do
+    if name == vars[i] then
+      return i
+    end
+  end
+  return 0   -- not found
+end
+
+
 function Compiler:codeCall (ast)
   local func = self.funcs[ast.fname]
   if not func then
@@ -220,8 +231,14 @@ function Compiler:codeExp (ast)
   elseif ast.tag == "call" then
     self:codeCall(ast)
   elseif ast.tag == "variable" then
-    self:addCode("load")
-    self:addCode(self:var2num(ast.var))
+    local idx = self:findLocal(ast.var)
+    if idx > 0 then
+      self:addCode("loadL")
+      self:addCode(idx)
+    else
+      self:addCode("load")
+      self:addCode(self:var2num(ast.var))
+    end
   elseif ast.tag == "indexed" then
     self:codeExp(ast.array)
     self:codeExp(ast.index)
@@ -242,8 +259,14 @@ function Compiler:codeAssgn (ast)
   local lhs = ast.lhs
   if lhs.tag == "variable" then
     self:codeExp(ast.exp)
-    self:addCode("store")
-    self:addCode(self:var2num(lhs.var))
+    local idx = self:findLocal(lhs.var)
+    if idx > 0 then
+      self:addCode("storeL")
+      self:addCode(idx)
+    else
+      self:addCode("store")
+      self:addCode(self:var2num(lhs.var))
+    end
   elseif lhs.tag == "indexed" then
     self:codeExp(lhs.array)
     self:codeExp(lhs.index)
@@ -336,6 +359,7 @@ end
 
 local function run (code, mem, stack, top)
   local pc = 1
+  local base = top
   while true do
   --[[
   io.write("--> ")
@@ -369,6 +393,16 @@ local function run (code, mem, stack, top)
       top = top - 1
     elseif code[pc] == "div" then
       stack[top - 1] = stack[top - 1] / stack[top]
+      top = top - 1
+    elseif code[pc] == "loadL" then
+      pc = pc + 1
+      local n = code[pc]
+      top = top + 1
+      stack[top] = stack[base + n]
+    elseif code[pc] == "storeL" then
+      pc = pc + 1
+      local n = code[pc]
+      stack[base + n] = stack[top]
       top = top - 1
     elseif code[pc] == "load" then
       pc = pc + 1
