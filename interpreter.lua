@@ -151,7 +151,7 @@ local function parse (input)
 end
 
 ----------------------------------------------------
-local Compiler = { code = {}, vars = {}, nvars = 0 }
+local Compiler = { funcs = {}, vars = {}, nvars = 0 }
 
 function Compiler:addCode (op)
   local code = self.code
@@ -270,19 +270,23 @@ end
 
 
 function Compiler:codeFunction (ast)
-  if ast.name ~= "main" then
-    error("no function name")
-  end
+  local code = {}
+  self.funcs[ast.name] = { code = code }
+  self.code = code
   self:codeStat(ast.body)
+  self:addCode("push")
+  self:addCode(0)
+  self:addCode("ret")
 end
 
 
 local function compile (ast)
   Compiler:codeFunction(ast)
-  Compiler:addCode("push")
-  Compiler:addCode(0)
-  Compiler:addCode("ret")
-  return Compiler.code
+  local main = Compiler.funcs["main"]
+  if not main then
+    error("no function 'main'")
+  end
+  return main.code
 end
 
 ----------------------------------------------------
