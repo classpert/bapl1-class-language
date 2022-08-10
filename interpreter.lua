@@ -42,7 +42,7 @@ local numeral = lpeg.R("09")^1 / tonumber /
                      node("number", "val")  * space
 
 local reserved = {"return", "if", "else", "while",
-                  "new", "function"}
+                  "new", "function", "var"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
@@ -109,6 +109,7 @@ grammar = lpeg.P{"prog",
   block = T"{" * stats * T";"^-1 * T"}" / node("block", "body"),
 
   stat = block
+       + Rw"var" * ID * T"=" * exp / node("local", "name", "init")
        + Rw"if" * exp * block * (Rw"else" * block)^-1
            / node("if1", "cond", "th", "el")
        + Rw"while" * exp * block / node("while1", "cond", "body")
@@ -156,7 +157,7 @@ local function parse (input)
 end
 
 ----------------------------------------------------
-local Compiler = { funcs = {}, vars = {}, nvars = 0 }
+local Compiler = { funcs = {}, vars = {}, nvars = 0, locals = {} }
 
 function Compiler:addCode (op)
   local code = self.code
@@ -254,13 +255,23 @@ end
   
 
 function Compiler:codeBlock (ast)
+  local oldlevel = #self.locals
   self:codeStat(ast.body)
+  local n = #self.locals - oldlevel   -- number of new local variables
+  if n > 0 then
+    for i = 1, n do table.remove(self.locals) end
+    self:addCode("pop")
+    self:addCode(n)
+  end
 end
 
 
 function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
+  elseif ast.tag == "local" then
+    self:codeExp(ast.init)
+    self.locals[#self.locals + 1] = ast.name
   elseif ast.tag == "call" then
     self:codeCall(ast)
     self:addCode("pop")
@@ -273,6 +284,7 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
+    self:addCode(#self.locals)
   elseif ast.tag == "while1" then
     local ilabel = self:currentPosition()
     self:codeExp(ast.cond)
@@ -305,6 +317,7 @@ function Compiler:codeFunction (ast)
   self:addCode("push")
   self:addCode(0)
   self:addCode("ret")
+  self:addCode(#self.locals)
 end
 
 
@@ -330,6 +343,9 @@ local function run (code, mem, stack, top)
   io.write("\n", code[pc], "\n")
   --]]
     if code[pc] == "ret" then
+      local n = code[pc + 1]    -- number of active local variables
+      stack[top - n] = stack[top]
+      top = top - n
       return top
     elseif code[pc] == "call" then
       pc = pc + 1
