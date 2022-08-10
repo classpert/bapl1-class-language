@@ -41,14 +41,15 @@ local space = lpeg.V"space"
 local numeral = lpeg.R("09")^1 / tonumber /
                      node("number", "val")  * space
 
-local reserved = {"return", "if", "else", "while", "new"}
+local reserved = {"return", "if", "else", "while",
+                  "new", "function"}
 local excluded = lpeg.P(false)
 for i = 1, #reserved do
   excluded = excluded + reserved[i]
 end
 excluded = excluded * -alphanum
 
-local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
+local ID = lpeg.V"ID"
 local var = ID / node("variable", "var")
 
 
@@ -94,29 +95,43 @@ local exp = lpeg.V"exp"
 local stat = lpeg.V"stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
+local funcDec = lpeg.V"funcDec"
 
 grammar = lpeg.P{"prog",
-  prog = space * stats * -1,
+  prog = space * funcDec * -1,
+
+  funcDec = Rw"function" * ID * T"(" * T")" * block
+              / node("function", "name", "body"),
+
   stats = stat * (T";" * stats)^-1 / nodeSeq,
+
   block = T"{" * stats * T";"^-1 * T"}",
+
   stat = block
        + Rw"if" * exp * block * (Rw"else" * block)^-1
            / node("if1", "cond", "th", "el")
        + Rw"while" * exp * block / node("while1", "cond", "body")
        + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp"),
+
   lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
+
   factor = Rw"new" * T"[" * exp * T"]" / node("new", "size")
          + numeral
          + T"(" * exp * T")"
          + lhs,
+
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
+
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
+
   space = (lpeg.S(" \t\n") + comment)^0
             * lpeg.P(function (_,p)
                        maxmatch = math.max(maxmatch, p);
                        return true
-                     end)
+                     end),
+
+  ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
 }
 
 
@@ -253,8 +268,17 @@ function Compiler:codeStat (ast)
   end
 end
 
+
+function Compiler:codeFunction (ast)
+  if ast.name ~= "main" then
+    error("no function name")
+  end
+  self:codeStat(ast.body)
+end
+
+
 local function compile (ast)
-  Compiler:codeStat(ast)
+  Compiler:codeFunction(ast)
   Compiler:addCode("push")
   Compiler:addCode(0)
   Compiler:addCode("ret")
