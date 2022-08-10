@@ -89,6 +89,7 @@ end
 
 
 local lhs = lpeg.V"lhs"
+local call = lpeg.V"call"
 local factor = lpeg.V"factor"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
@@ -116,9 +117,12 @@ grammar = lpeg.P{"prog",
 
   lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
 
+  call = ID * T"(" * T")" / node("call", "fname"),
+
   factor = Rw"new" * T"[" * exp * T"]" / node("new", "size")
          + numeral
          + T"(" * exp * T")"
+         + call
          + lhs,
 
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
@@ -197,10 +201,22 @@ function Compiler:fixJmp2here (jmp)
 end
 
 
+function Compiler:codeCall (ast)
+  local func = self.funcs[ast.fname]
+  if not func then
+    error("undefined function " .. fname)
+  end
+  self:addCode("call")
+  self:addCode(func.code)
+end
+
+
 function Compiler:codeExp (ast)
   if ast.tag == "number" then
     self:addCode("push")
     self:addCode(ast.val)
+  elseif ast.tag == "call" then
+    self:codeCall(ast)
   elseif ast.tag == "variable" then
     self:addCode("load")
     self:addCode(self:var2num(ast.var))
@@ -303,6 +319,10 @@ local function run (code, mem, stack, top)
   --]]
     if code[pc] == "ret" then
       return top
+    elseif code[pc] == "call" then
+      pc = pc + 1
+      local code = code[pc]
+      top = run(code, mem, stack, top)
     elseif code[pc] == "push" then
       pc = pc + 1
       top = top + 1
@@ -351,7 +371,7 @@ local function run (code, mem, stack, top)
         pc = code[pc]
       end
       top = top - 1
-    else error("unknown instruction")
+    else error("unknown instruction " .. code[pc])
     end
     pc = pc + 1
   end
