@@ -112,6 +112,7 @@ grammar = lpeg.P{"prog",
        + Rw"if" * exp * block * (Rw"else" * block)^-1
            / node("if1", "cond", "th", "el")
        + Rw"while" * exp * block / node("while1", "cond", "body")
+       + call
        + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp"),
 
@@ -255,6 +256,10 @@ end
 function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
+  elseif ast.tag == "call" then
+    self:codeCall(ast)
+    self:addCode("pop")
+    self:addCode(1)
   elseif ast.tag == "seq" then
     self:codeStat(ast.st1)
     self:codeStat(ast.st2)
@@ -323,6 +328,9 @@ local function run (code, mem, stack, top)
       pc = pc + 1
       local code = code[pc]
       top = run(code, mem, stack, top)
+    elseif code[pc] == "pop" then
+      pc = pc + 1
+      top = top - code[pc]
     elseif code[pc] == "push" then
       pc = pc + 1
       top = top + 1
