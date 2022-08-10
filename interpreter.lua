@@ -106,7 +106,7 @@ grammar = lpeg.P{"prog",
 
   stats = stat * (T";" * stats)^-1 / nodeSeq,
 
-  block = T"{" * stats * T";"^-1 * T"}",
+  block = T"{" * stats * T";"^-1 * T"}" / node("block", "body"),
 
   stat = block
        + Rw"if" * exp * block * (Rw"else" * block)^-1
@@ -253,6 +253,11 @@ function Compiler:codeAssgn (ast)
 end
   
 
+function Compiler:codeBlock (ast)
+  self:codeStat(ast.body)
+end
+
+
 function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
@@ -260,6 +265,8 @@ function Compiler:codeStat (ast)
     self:codeCall(ast)
     self:addCode("pop")
     self:addCode(1)
+  elseif ast.tag == "block" then
+    self:codeBlock(ast)
   elseif ast.tag == "seq" then
     self:codeStat(ast.st1)
     self:codeStat(ast.st2)
