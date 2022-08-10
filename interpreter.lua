@@ -98,7 +98,7 @@ local block = lpeg.V"block"
 local funcDec = lpeg.V"funcDec"
 
 grammar = lpeg.P{"prog",
-  prog = space * funcDec * -1,
+  prog = space * lpeg.Ct(funcDec^1) * -1,
 
   funcDec = Rw"function" * ID * T"(" * T")" * block
               / node("function", "name", "body"),
@@ -281,7 +281,9 @@ end
 
 
 local function compile (ast)
-  Compiler:codeFunction(ast)
+  for i = 1, #ast do
+    Compiler:codeFunction(ast[i])
+  end
   local main = Compiler.funcs["main"]
   if not main then
     error("no function 'main'")
@@ -291,9 +293,8 @@ end
 
 ----------------------------------------------------
 
-local function run (code, mem, stack)
+local function run (code, mem, stack, top)
   local pc = 1
-  local top = 0
   while true do
   --[[
   io.write("--> ")
@@ -301,7 +302,7 @@ local function run (code, mem, stack)
   io.write("\n", code[pc], "\n")
   --]]
     if code[pc] == "ret" then
-      return
+      return top
     elseif code[pc] == "push" then
       pc = pc + 1
       top = top + 1
@@ -364,5 +365,5 @@ local code = compile(ast)
 print(pt.pt(code))
 local stack = {}
 local mem = {}
-run(code, mem, stack)
+run(code, mem, stack, 0)
 print(stack[1])
