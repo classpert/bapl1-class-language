@@ -216,7 +216,13 @@ function Compiler:findLocal (name)
       return i
     end
   end
-  return 0   -- not found
+  local params = self.params
+  for i = 1, #params do
+    if name == params[i] then
+      return -(#params - i)
+    end
+  end
+  return false   -- not found
 end
 
 
@@ -225,8 +231,12 @@ function Compiler:codeCall (ast)
   if not func then
     error("undefined function " .. ast.fname)
   end
-  if #ast.args ~= #func.params then
+  local args = ast.args
+  if #args ~= #func.params then
     error("wrong number of arguments calling " .. ast.fname)
+  end
+  for i = 1, #args do
+    self:codeExp(args[i])
   end
   self:addCode("call")
   self:addCode(func.code)
@@ -241,7 +251,7 @@ function Compiler:codeExp (ast)
     self:codeCall(ast)
   elseif ast.tag == "variable" then
     local idx = self:findLocal(ast.var)
-    if idx > 0 then
+    if idx then
       self:addCode("loadL")
       self:addCode(idx)
     else
@@ -269,7 +279,7 @@ function Compiler:codeAssgn (ast)
   if lhs.tag == "variable" then
     self:codeExp(ast.exp)
     local idx = self:findLocal(lhs.var)
-    if idx > 0 then
+    if idx then
       self:addCode("storeL")
       self:addCode(idx)
     else
@@ -316,7 +326,7 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
-    self:addCode(#self.locals)
+    self:addCode(#self.locals + #self.params)
   elseif ast.tag == "while1" then
     local ilabel = self:currentPosition()
     self:codeExp(ast.cond)
@@ -345,11 +355,12 @@ function Compiler:codeFunction (ast)
   local code = {}
   self.funcs[ast.name] = {code = code, params = ast.params}
   self.code = code
+  self.params = ast.params
   self:codeStat(ast.body)
   self:addCode("push")
   self:addCode(0)
   self:addCode("ret")
-  self:addCode(#self.locals)
+  self:addCode(#self.locals + #self.params)
 end
 
 
@@ -370,7 +381,7 @@ local function run (code, mem, stack, top)
   local pc = 1
   local base = top
   while true do
-  --[[
+  ---[[
   io.write("--> ")
   for i = 1, top do io.write(stack[i], " ") end
   io.write("\n", code[pc], "\n")
