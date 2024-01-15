@@ -1,6 +1,11 @@
 local lpeg = require "lpeg"
 local pt = require "pt"
 
+
+local function I (msg)
+  return lpeg.P(function (_, i) print(msg, i); return true end)
+end
+
 ----------------------------------------------------
 local function nodeNum (num)
   return {tag = "number", val = tonumber(num)}
@@ -97,7 +102,8 @@ grammar = lpeg.P{"stats",
   block = OB * stats * SC^-1 * CB,
   stat = block
        + ID * Assgn * exp / nodeAssgn
-       + ret * exp / nodeRet,
+       + ret * exp / nodeRet
+       + lpeg.Cc{tag = "nop"},   -- empty statement
   primary = numeral + OP * exp * CP + var,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
@@ -171,6 +177,8 @@ local function codeStat (state, ast)
   elseif ast.tag == "ret" then
     codeExp(state, ast.exp)
     addCode(state, "ret")
+  elseif ast.tag == "nop" then
+    -- no operation, no code
   else error("invalid tree")
   end
 end
