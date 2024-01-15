@@ -25,6 +25,10 @@ local function nodeAssgn (id, exp)
   return {tag = "assgn", id = id, exp = exp}
 end
 
+local function nodePrint (exp)
+  return {tag = "print", exp = exp}
+end
+
 local function nodeRet (exp)
   return {tag = "ret", exp = exp}
 end
@@ -57,6 +61,7 @@ local OP = "(" * space
 local CP = ")" * space
 local OB = "{" * space
 local CB = "}" * space
+local At = "@" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
@@ -101,6 +106,7 @@ grammar = lpeg.P{"stats",
   stats = stat * (SC * stats)^-1 / nodeSeq,
   block = OB * stats * SC^-1 * CB,
   stat = block
+       + At * exp / nodePrint
        + ID * Assgn * exp / nodeAssgn
        + ret * exp / nodeRet
        + lpeg.Cc{tag = "nop"},   -- empty statement
@@ -177,6 +183,9 @@ local function codeStat (state, ast)
   elseif ast.tag == "ret" then
     codeExp(state, ast.exp)
     addCode(state, "ret")
+  elseif ast.tag == "print" then
+    codeExp(state, ast.exp)
+    addCode(state, "print")
   elseif ast.tag == "nop" then
     -- no operation, no code
   else error("invalid tree")
@@ -249,6 +258,9 @@ local function run (code, mem, stack)
       top = top - 1
     elseif code[pc] == "lt" then
       stack[top - 1] = b2n(stack[top - 1] < stack[top])
+      top = top - 1
+    elseif code[pc] == "print" then
+      print(stack[top])
       top = top - 1
     elseif code[pc] == "load" then
       pc = pc + 1
