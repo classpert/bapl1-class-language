@@ -12,7 +12,7 @@ local OP = "(" * space
 local CP = ")" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
-local opM = lpeg.C(lpeg.S"*/") * space
+local opM = lpeg.C(lpeg.S"*/%") * space
 
 
 local numeral
@@ -58,7 +58,7 @@ end
 
 
 local ops = {["+"] = "add", ["-"] = "sub",
-             ["*"] = "mul", ["/"] = "div"}
+             ["*"] = "mul", ["/"] = "div", ["%"] = "mod"}
 
 local function codeExp (state, ast)
   if ast.tag == "number" then
@@ -99,6 +99,9 @@ local function run (code, stack)
       top = top - 1
     elseif code[pc] == "div" then
       stack[top - 1] = stack[top - 1] / stack[top]
+      top = top - 1
+    elseif code[pc] == "mod" then
+      stack[top - 1] = stack[top - 1] % stack[top]
       top = top - 1
     else error("unknown instruction")
     end
