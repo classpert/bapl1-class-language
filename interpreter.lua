@@ -7,13 +7,20 @@ local function node (num)
 end
 
 local space = lpeg.S(" \t\n")^0
-local numeral = lpeg.R("09")^1 / node  * space
 
 local OP = "(" * space
 local CP = ")" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/") * space
+
+
+local numeral
+do
+  local digit = lpeg.R("09")
+  local hexa = digit + lpeg.R("af", "AF")
+  numeral = (("0" * lpeg.S("xX") * hexa^1 + digit^1) / node) * space
+end
 
 
 -- Convert a list {n1, "+", n2, "+", n3, ...} into a tree
