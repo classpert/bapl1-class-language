@@ -26,8 +26,12 @@ local opComp = lpeg.C(lpeg.P(">=") + "<=" + "==" + "!=" + "<" + ">") * space
 local numeral
 do
   local digit = lpeg.R("09")
-  local hexa = digit + lpeg.R("af", "AF")
-  numeral = (("0" * lpeg.S("xX") * hexa^1 + digit^1) / node) * space
+  local hexadigit = digit + lpeg.R("af", "AF")
+  local hexanum = "0" * lpeg.S("xX") * hexadigit^1
+  local exponent = lpeg.S("eE") * lpeg.S("+-")^-1 * digit^1
+  local decimal = digit^1 * lpeg.P("." * digit^0)^-1 + "." * digit^1
+  decimal = decimal * exponent^-1
+  numeral = ((hexanum + decimal) / node) * space
 end
 
 
