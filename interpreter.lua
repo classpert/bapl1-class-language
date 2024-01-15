@@ -32,7 +32,7 @@ local function nodeSeq (st1, st2)
   end
 end
 
-local alpha = lpeg.R("AZ", "az")
+local alpha = lpeg.R("AZ", "az", "__")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
 
