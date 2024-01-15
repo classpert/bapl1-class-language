@@ -20,6 +20,7 @@ local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
 local opE = lpeg.C("^") * space
 local opUMin = "-" * space
+local opComp = lpeg.C(lpeg.P(">=") + "<=" + "==" + "!=" + "<" + ">") * space
 
 
 local numeral
@@ -43,7 +44,8 @@ end
 local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
 local prefixed = lpeg.V"prefixed"
-local term = lpeg.V"term"
+local term = lpeg.V"term"   -- multiplicative expressions
+local addexp = lpeg.V"addexp"   -- additive expressions
 local exp = lpeg.V"exp"
 
 grammar = lpeg.P{"exp",
@@ -52,7 +54,8 @@ grammar = lpeg.P{"exp",
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
   prefixed = opUMin * factor / nodeUnOp + factor,
   term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
-  exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
+  addexp = lpeg.Ct(term * (opA * term)^0) / foldBin,
+  exp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
 }
 
 grammar = space * grammar * -1
@@ -71,6 +74,8 @@ end
 
 local ops = {["+"] = "add", ["-"] = "sub",
              ["*"] = "mul", ["/"] = "div", ["%"] = "mod", ["^"] = "exp",
+             [">="] = "ge", ["<="] = "le", ["=="] = "eq", ["!="] = "ne",
+             [">"] = "gt", ["<"] = "lt",
             }
 
 local unOps = {["-"] = "neg"}
@@ -97,6 +102,9 @@ local function compile (ast)
 end
 
 ----------------------------------------------------
+
+-- convert boolean to integer
+local function b2n (n) return n and 1 or 0 end
 
 local function run (code, stack)
   local pc = 1
@@ -125,6 +133,24 @@ local function run (code, stack)
       top = top - 1
     elseif code[pc] == "exp" then
       stack[top - 1] = stack[top - 1] ^ stack[top]
+      top = top - 1
+    elseif code[pc] == "ge" then
+      stack[top - 1] = b2n(stack[top - 1] >= stack[top])
+      top = top - 1
+    elseif code[pc] == "le" then
+      stack[top - 1] = b2n(stack[top - 1] <= stack[top])
+      top = top - 1
+    elseif code[pc] == "eq" then
+      stack[top - 1] = b2n(stack[top - 1] == stack[top])
+      top = top - 1
+    elseif code[pc] == "ne" then
+      stack[top - 1] = b2n(stack[top - 1] ~= stack[top])
+      top = top - 1
+    elseif code[pc] == "gt" then
+      stack[top - 1] = b2n(stack[top - 1] > stack[top])
+      top = top - 1
+    elseif code[pc] == "lt" then
+      stack[top - 1] = b2n(stack[top - 1] < stack[top])
       top = top - 1
     else error("unknown instruction")
     end
