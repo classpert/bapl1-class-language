@@ -6,6 +6,11 @@ local function node (num)
   return {tag = "number", val = tonumber(num)}
 end
 
+
+local function nodeUnOp (e)
+  return {tag = "unop", op = "-", e = e}
+end
+
 local space = lpeg.S(" \t\n")^0
 
 local OP = "(" * space
@@ -14,6 +19,7 @@ local CP = ")" * space
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
 local opE = lpeg.C("^") * space
+local opUMin = "-" * space
 
 
 local numeral
@@ -36,6 +42,7 @@ end
 
 local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
+local prefixed = lpeg.V"prefixed"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
 
@@ -43,7 +50,8 @@ grammar = lpeg.P{"exp",
   primary = numeral + OP * exp * CP,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
-  term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
+  prefixed = opUMin * factor / nodeUnOp + factor,
+  term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
 }
 
@@ -65,10 +73,15 @@ local ops = {["+"] = "add", ["-"] = "sub",
              ["*"] = "mul", ["/"] = "div", ["%"] = "mod", ["^"] = "exp",
             }
 
+local unOps = {["-"] = "neg"}
+
 local function codeExp (state, ast)
   if ast.tag == "number" then
     addCode(state, "push")
     addCode(state, ast.val)
+  elseif ast.tag == "unop" then
+    codeExp(state, ast.e)
+    addCode(state, unOps[ast.op])
   elseif ast.tag == "binop" then
     codeExp(state, ast.e1)
     codeExp(state, ast.e2)
@@ -93,6 +106,8 @@ local function run (code, stack)
       pc = pc + 1
       top = top + 1
       stack[top] = code[pc]
+    elseif code[pc] == "neg" then
+      stack[top] = -stack[top]
     elseif code[pc] == "add" then
       stack[top - 1] = stack[top - 1] + stack[top]
       top = top - 1
