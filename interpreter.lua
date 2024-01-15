@@ -13,6 +13,7 @@ local CP = ")" * space
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
+local opE = lpeg.C("^") * space
 
 
 local numeral
@@ -33,12 +34,15 @@ local function foldBin (lst)
   return tree
 end
 
+local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
 local term = lpeg.V"term"
 local exp = lpeg.V"exp"
 
 grammar = lpeg.P{"exp",
-  factor = numeral + OP * exp * CP,
+  primary = numeral + OP * exp * CP,
+  -- exponentiation is right associative
+  factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
   term = lpeg.Ct(factor * (opM * factor)^0) / foldBin,
   exp = lpeg.Ct(term * (opA * term)^0) / foldBin,
 }
@@ -58,7 +62,8 @@ end
 
 
 local ops = {["+"] = "add", ["-"] = "sub",
-             ["*"] = "mul", ["/"] = "div", ["%"] = "mod"}
+             ["*"] = "mul", ["/"] = "div", ["%"] = "mod", ["^"] = "exp",
+            }
 
 local function codeExp (state, ast)
   if ast.tag == "number" then
@@ -102,6 +107,9 @@ local function run (code, stack)
       top = top - 1
     elseif code[pc] == "mod" then
       stack[top - 1] = stack[top - 1] % stack[top]
+      top = top - 1
+    elseif code[pc] == "exp" then
+      stack[top - 1] = stack[top - 1] ^ stack[top]
       top = top - 1
     else error("unknown instruction")
     end
