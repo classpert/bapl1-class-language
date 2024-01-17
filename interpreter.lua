@@ -147,12 +147,9 @@ local ops = {["+"] = "add", ["-"] = "sub",
 local unOps = {["-"] = "neg"}
 
 
-local function var2num (state, id, def)
+local function var2num (state, id)
   local num = state.vars[id]
   if not num then   -- new variable?
-    if not def then   -- not in a definition?
-      err("variable %s being used without a definition", id)
-    end
     num = state.nvars + 1
     state.nvars = num
     state.vars[id] = num
@@ -170,7 +167,7 @@ local function codeExp (state, ast)
     addCode(state, unOps[ast.op])
   elseif ast.tag == "variable" then
     addCode(state, "load")
-    addCode(state, var2num(state, ast.var, false))
+    addCode(state, var2num(state, ast.var))
   elseif ast.tag == "binop" then
     codeExp(state, ast.e1)
     codeExp(state, ast.e2)
@@ -184,7 +181,7 @@ local function codeStat (state, ast)
   if ast.tag == "assgn" then
     codeExp(state, ast.exp)
     addCode(state, "store")
-    addCode(state, var2num(state, ast.id, true))
+    addCode(state, var2num(state, ast.id))
   elseif ast.tag == "seq" then
     codeStat(state, ast.st1)
     codeStat(state, ast.st2)
