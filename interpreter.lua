@@ -73,13 +73,20 @@ local space = lpeg.V"space"
 local numeral = lpeg.R("09")^1 / nodeNum  * space
 
 local reserved = {"return", "if"}
-local excluded = lpeg.P(false)
-for i = 1, #reserved do
-  excluded = excluded + reserved[i]
+for i = 1, #reserved do   -- invert table
+  reserved[reserved[i]] = true
+  reserved[i] = nil
 end
-excluded = excluded * -alphanum
 
-local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
+
+local ID = (lpeg.C(alpha * alphanum^0)) * space
+ID = lpeg.Cmt(ID, function (_, _, id)   -- filter valid identifiers
+                    if not reserved[id] then
+                      return true, id
+                    else  -- 'id' is a reserved word
+                      return false  -- match will fail
+                    end
+                  end)
 local var = ID / nodeVar
 
 
@@ -89,7 +96,7 @@ end
 
 
 local function Rw (t)
-  assert(excluded:match(t))
+  assert(reserved[t])
   return t * -alphanum * space
 end
 
