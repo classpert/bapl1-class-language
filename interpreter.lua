@@ -150,22 +150,10 @@ grammar = lpeg.P{"prog",
 }
 
 
-local function countNL (input, max)
-  local count = 1
-  local position = 1
-  while true do
-    -- find position of next newline (if any)
-    local pnewline = string.find(input, "\n", position, true)
-    if not pnewline or pnewline >= max then break end
-    count = count + 1
-    position = pnewline + 1
-  end
-  return count
-end
-
-
 local function syntaxError (input, max)
-  local line = countNL(input, max)
+  -- count newlines up to max
+  local _, line = string.gsub(string.sub(input, 1, max), "\n", "")
+  line = line + 1   -- first line is 1 (not 0)
   io.stderr:write("syntax error at line ", line, "\n")
   io.stderr:write(string.sub(input, max - 10, max - 1),
         "|", string.sub(input, max, max + 11), "\n")
