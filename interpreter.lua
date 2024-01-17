@@ -1,3 +1,4 @@
+
 local lpeg = require "lpeg"
 local pt = require "pt"
 
@@ -11,6 +12,11 @@ local function err (msg, ...)
   io.stderr:write(string.format(msg, ...), "\n")
   os.exit(false)
 end
+----------------------------------------------------
+local function I (msg)
+  return lpeg.P(function () print(msg); return true end)
+end
+
 ----------------------------------------------------
 local function nodeNum (num)
   return {tag = "number", val = tonumber(num)}
@@ -50,23 +56,36 @@ local alpha = lpeg.R("AZ", "az", "__")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
 
-local space = lpeg.S(" \t\n")^0
+local comment = "#" * (lpeg.P(1) - "\n")^0
+
+
+local maxmatch = 0
+local space = lpeg.V"space"
+
+
 local numeral = lpeg.R("09")^1 / nodeNum  * space
 
-local ID = lpeg.C(alpha * alphanum^0) * space
+local reserved = {"return", "if"}
+local excluded = lpeg.P(false)
+for i = 1, #reserved do
+  excluded = excluded + reserved[i]
+end
+excluded = excluded * -alphanum
+
+local ID = (lpeg.C(alpha * alphanum^0) - excluded) * space
 local var = ID / nodeVar
 
-local Assgn = "=" * space
-local SC = ";" * space
 
-local ret = "return" * space
+local function T (t)
+  return t * space
+end
 
 
-local OP = "(" * space
-local CP = ")" * space
-local OB = "{" * space
-local CB = "}" * space
-local At = "@" * space
+local function Rw (t)
+  assert(excluded:match(t))
+  return t * -alphanum * space
+end
+
 
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
@@ -107,33 +126,50 @@ local stat = lpeg.V"stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 
-grammar = lpeg.P{"stats",
-  stats = stat * (SC * stats)^-1 / nodeSeq,
-  block = OB * stats * SC^-1 * CB,
+grammar = lpeg.P{"prog",
+  prog = space * stats * -1,
+  stats = stat * (T";" * stats)^-1 / nodeSeq,
+  block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + At * exp / nodePrint
-       + ID * Assgn * exp / nodeAssgn
-       + ret * exp / nodeRet
+       + T"@" * exp / nodePrint
+       + ID * T"=" * exp / nodeAssgn
+       + Rw"return" * exp / nodeRet
        + lpeg.Cc{tag = "nop"},   -- empty statement
-  primary = numeral + OP * exp * CP + var,
+  primary = numeral + T"(" * exp * T")" + var,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
   prefixed = opUMin * factor / nodeUnOp + factor,
   term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
   addexp = lpeg.Ct(term * (opA * term)^0) / foldBin,
   exp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
+  space = (lpeg.S(" \t\n") + comment)^0
+            * lpeg.P(function (_,p)
+                       maxmatch = math.max(maxmatch, p);
+                       return true
+                     end)
 }
 
-grammar = space * grammar * -1
+
+local function syntaxError (input, max)
+  io.stderr:write("syntax error\n")
+  io.stderr:write(string.sub(input, max - 10, max - 1),
+        "|", string.sub(input, max, max + 11), "\n")
+end
 
 local function parse (input)
-  return grammar:match(input)
+  local res = grammar:match(input)
+  if (not res) then
+    syntaxError(input, maxmatch)
+    os.exit(1)
+  end
+  return res
 end
 
 ----------------------------------------------------
+local Compiler = { code = {}, vars = {}, nvars = 0 }
 
-local function addCode (state, op)
-  local code = state.code
+function Compiler:addCode (op)
+  local code = self.code
   code[#code + 1] = op
 end
 
@@ -147,50 +183,50 @@ local ops = {["+"] = "add", ["-"] = "sub",
 local unOps = {["-"] = "neg"}
 
 
-local function var2num (state, id)
-  local num = state.vars[id]
+function Compiler:var2num (id)
+  local num = self.vars[id]
   if not num then   -- new variable?
-    num = state.nvars + 1
-    state.nvars = num
-    state.vars[id] = num
+    num = self.nvars + 1
+    self.nvars = num
+    self.vars[id] = num
   end
   return num
 end
 
 
-local function codeExp (state, ast)
+function Compiler:codeExp (ast)
   if ast.tag == "number" then
-    addCode(state, "push")
-    addCode(state, ast.val)
+    self:addCode("push")
+    self:addCode(ast.val)
   elseif ast.tag == "unop" then
-    codeExp(state, ast.e)
-    addCode(state, unOps[ast.op])
+    self:codeExp(ast.e)
+    self:addCode(unOps[ast.op])
   elseif ast.tag == "variable" then
-    addCode(state, "load")
-    addCode(state, var2num(state, ast.var))
+    self:addCode("load")
+    self:addCode(self:var2num(ast.var))
   elseif ast.tag == "binop" then
-    codeExp(state, ast.e1)
-    codeExp(state, ast.e2)
-    addCode(state, ops[ast.op])
+    self:codeExp(ast.e1)
+    self:codeExp(ast.e2)
+    self:addCode(ops[ast.op])
   else error("invalid tree")
   end
 end
 
 
-local function codeStat (state, ast)
+function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
-    codeExp(state, ast.exp)
-    addCode(state, "store")
-    addCode(state, var2num(state, ast.id))
+    self:codeExp(ast.exp)
+    self:addCode("store")
+    self:addCode(self:var2num(ast.id))
   elseif ast.tag == "seq" then
-    codeStat(state, ast.st1)
-    codeStat(state, ast.st2)
+    self:codeStat(ast.st1)
+    self:codeStat(ast.st2)
   elseif ast.tag == "ret" then
-    codeExp(state, ast.exp)
-    addCode(state, "ret")
+    self:codeExp(ast.exp)
+    self:addCode("ret")
   elseif ast.tag == "print" then
-    codeExp(state, ast.exp)
-    addCode(state, "print")
+    self:codeExp(ast.exp)
+    self:addCode("print")
   elseif ast.tag == "nop" then
     -- no operation, no code
   else error("invalid tree")
@@ -198,12 +234,11 @@ local function codeStat (state, ast)
 end
 
 local function compile (ast)
-  local state = { code = {}, vars = {}, nvars = 0 }
-  codeStat(state, ast)
-  addCode(state, "push")
-  addCode(state, 0)
-  addCode(state, "ret")
-  return state.code
+  Compiler:codeStat(ast)
+  Compiler:addCode("push")
+  Compiler:addCode(0)
+  Compiler:addCode("ret")
+  return Compiler.code
 end
 
 ----------------------------------------------------
