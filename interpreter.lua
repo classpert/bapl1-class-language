@@ -56,7 +56,14 @@ local alpha = lpeg.R("AZ", "az", "__")
 local digit = lpeg.R("09")
 local alphanum = alpha + digit
 
-local comment = "#" * (lpeg.P(1) - "\n")^0
+local comment
+do
+  local missEnd = lpeg.P(function ()
+    err("unfinished long comment")
+  end)
+  comment = "#{" * (lpeg.P(1) - "#}")^0 * (lpeg.P"#}" + missEnd)
+          + "#" * (lpeg.P(1) - "\n")^0
+end
 
 
 local maxmatch = 0
