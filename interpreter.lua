@@ -87,7 +87,7 @@ end
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
 local opE = lpeg.C("^") * space
-local opUMin = lpeg.C("-") * space
+local unOp = lpeg.C(lpeg.S"-!") * space
 local opComp = lpeg.C(lpeg.P(">=") + "<=" + "==" + "!=" + "<" + ">") * space
 
 
@@ -138,7 +138,7 @@ grammar = lpeg.P{"prog",
   primary = numeral + T"(" * exp * T")" + var,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
-  prefixed = opUMin * factor / node("unop", "op", "e") + factor,
+  prefixed = unOp * prefixed / node("unop", "op", "e") + factor,
   term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
   addexp = lpeg.Ct(term * (opA * term)^0) / foldBin,
   exp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
@@ -183,7 +183,7 @@ local ops = {["+"] = "add", ["-"] = "sub",
              [">"] = "gt", ["<"] = "lt",
             }
 
-local unOps = {["-"] = "neg"}
+local unOps = {["-"] = "neg", ["!"] = "not1"}
 
 
 function Compiler:var2num (id)
@@ -308,6 +308,8 @@ local function run (code, mem, stack)
       stack[top] = code[pc]
     elseif code[pc] == "neg" then
       stack[top] = -stack[top]
+    elseif code[pc] == "not1" then
+      stack[top] = (stack[top] == 0) and 1 or 0
     elseif code[pc] == "add" then
       stack[top - 1] = stack[top - 1] + stack[top]
       top = top - 1
