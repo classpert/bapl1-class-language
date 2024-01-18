@@ -57,7 +57,7 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local reserved = {"return", "if", "else", "while"}
+local reserved = {"return", "if", "elseif", "else", "while"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
@@ -115,6 +115,9 @@ local function foldBin (lst)
   return tree
 end
 
+-- To be reused by 'if' and 'elseif'
+local nodeIf = node("if1", "cond", "th", "el")
+
 local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
 local prefixed = lpeg.V"prefixed"
@@ -122,6 +125,7 @@ local term = lpeg.V"term"   -- multiplicative expressions
 local addexp = lpeg.V"addexp"   -- additive expressions
 local exp = lpeg.V"exp"
 local stat = lpeg.V"stat"
+local restif = lpeg.V"restif"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 
@@ -131,12 +135,13 @@ grammar = lpeg.P{"prog",
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
        + T"@" * exp / node("print", "exp")
-       + Rw"if" * exp * block * (Rw"else" * block)^-1
-           / node("if1", "cond", "th", "el")
+       + Rw"if" * exp * block * restif / nodeIf
        + Rw"while" * exp * block / node("while1", "cond", "body")
        + ID * T"=" * exp / node("assgn", "id", "exp")
        + Rw"return" * exp / node("ret", "exp")
        + lpeg.Cc{tag = "nop"},   -- empty statement
+  restif = (Rw"elseif" * exp * block * restif / nodeIf
+         +  Rw"else" * block)^-1,
   primary = numeral + T"(" * exp * T")" + var,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
@@ -387,7 +392,7 @@ end
 
 local input = io.read("a")
 local ast = parse(input)
--- print(pt.pt(ast))
+print(pt.pt(ast))
 local code = compile(ast)
 print(pt.pt(code))
 local stack = {}
