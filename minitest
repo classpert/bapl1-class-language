@@ -1,33 +1,47 @@
 #{#}   # empty long comment
 
+# To ease checking, any print of a non-zero value indicates an error,
+# except for the final 1000, which signals that the program ran until
+# its end.
+
 # Expressions
 
-@ 5 < 4;
-@ 5 >= 4;
 #{
    a long comment
 #}
+#
 {_x_1 = (0.5 + .5) * 5.E+00 + 4e0 + -700.0e-2 ; ;; };
-@_x_1;  # a short comment
-{ y__2 =   ((3 >= 2) + (3 <= 2) + (3 == 2)
-       + (3 != 2) + (3 < 2) + (3 > 2))};
-@y__2 * !!10;
-@ 0x10 / 4;
-@ _x_1 + y__2;;
+
+{
+  y__2 =   ((3 >= 2) + (3 <= 2) + (3 == 2)
+       + (3 != 2) + (3 < 2) + (3 > 2))
+};
+
+@ _x_1 - y__2 + 1 * !!10;;
 
 
 
 # control structures
 
 i = 1;
+sum = 0;
 while i <= 4 {
   if i % 2 == 1 {
-    @i;
+    sum = sum + i;
   }
-  elseif i % 2 == 0 {
-    @i + .0
+  elseif (i % 2) == 0 {
+    sum = sum + i * 2
   }
   else { @undef + 1 };   # force an error in this case
   i = i + 1
 };
-return i
+@ sum - 16;
+
+
+# logical operators
+x = 10 and 20;
+x = x + (10 or undef + 1);   # short circuit avoids the error
+x = x + (10 and 2 * 10  or 30);   # check priorities
+x = x + (!!0 and 200 or 2 * 100 + 100);
+@x - 350;
+return 1000

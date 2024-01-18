@@ -57,7 +57,7 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local reserved = {"return", "if", "elseif", "else", "while"}
+local reserved = {"return", "if", "elseif", "else", "while", "and", "or"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
@@ -115,6 +115,17 @@ local function foldBin (lst)
   return tree
 end
 
+
+local function foldLog (op)
+  return function (lst)
+    local tree = lst[1]
+    for i = 2, #lst do
+      tree = { tag = "logop", e1 = tree, op = op, e2 = lst[i] }
+    end
+    return tree
+  end
+end
+
 -- To be reused by 'if' and 'elseif'
 local nodeIf = node("if1", "cond", "th", "el")
 
@@ -123,7 +134,9 @@ local factor = lpeg.V"factor"
 local prefixed = lpeg.V"prefixed"
 local term = lpeg.V"term"   -- multiplicative expressions
 local addexp = lpeg.V"addexp"   -- additive expressions
-local exp = lpeg.V"exp"
+local compexp = lpeg.V"compexp"   -- comparative expressions
+local andexp = lpeg.V"andexp"   -- 'and' expressions
+local exp = lpeg.V"exp"   -- 'or' expressions
 local stat = lpeg.V"stat"
 local restif = lpeg.V"restif"
 local stats = lpeg.V"stats"
@@ -148,7 +161,9 @@ grammar = lpeg.P{"prog",
   prefixed = unOp * prefixed / node("unop", "op", "e") + factor,
   term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
   addexp = lpeg.Ct(term * (opA * term)^0) / foldBin,
-  exp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
+  compexp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
+  andexp = lpeg.Ct(compexp * (Rw"and" * compexp)^0) / foldLog"and",
+  exp = lpeg.Ct(andexp * (Rw"or" * andexp)^0) / foldLog"or",
   space = (lpeg.S(" \t\n") + comment)^0
             * lpeg.P(function (_,p)
                        maxmatch = math.max(maxmatch, p);
@@ -191,6 +206,8 @@ local ops = {["+"] = "add", ["-"] = "sub",
             }
 
 local unOps = {["-"] = "neg", ["!"] = "not1"}
+
+local logOps = {["and"] = "jmpZP", ["or"] = "jmpNZP"}
 
 
 function Compiler:var2num (id)
@@ -249,6 +266,11 @@ function Compiler:codeExp (ast)
     self:codeExp(ast.e1)
     self:codeExp(ast.e2)
     self:addCode(ops[ast.op])
+  elseif ast.tag == "logop" then
+    self:codeExp(ast.e1)
+    local jmp = self:codeJmpF(logOps[ast.op])
+    self:codeExp(ast.e2)
+    self:fixJmp2here(jmp)
   else error("invalid tree")
   end
 end
@@ -379,10 +401,24 @@ local function run (code, mem, stack)
       pc = pc + code[pc]
     elseif code[pc] == "jmpZ" then
       pc = pc + 1
-      if stack[top] == 0 or stack[top] == nil then
+      if stack[top] == 0 then
         pc = pc + code[pc]
       end
       top = top - 1
+    elseif code[pc] == "jmpZP" then
+      pc = pc + 1
+      if stack[top] == 0 then
+        pc = pc + code[pc]
+      else
+        top = top - 1
+      end
+    elseif code[pc] == "jmpNZP" then
+      pc = pc + 1
+      if stack[top] ~= 0 then
+        pc = pc + code[pc]
+      else
+        top = top - 1
+      end
     else error("unknown instruction")
     end
     pc = pc + 1
@@ -392,9 +428,9 @@ end
 
 local input = io.read("a")
 local ast = parse(input)
-print(pt.pt(ast))
+-- print(pt.pt(ast))
 local code = compile(ast)
-print(pt.pt(code))
+-- print(pt.pt(code))
 local stack = {}
 local mem = {}
 run(code, mem, stack)
