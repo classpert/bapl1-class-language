@@ -204,21 +204,29 @@ function Compiler:currentPosition ()
 end
 
 
+function Compiler:fixJmp (label, jmp)
+  self.code[jmp] = label  - jmp
+end
+
+
 function Compiler:codeJmpB (op, label)
   self:addCode(op)
-  self:addCode(label)
+  self:addCode(0)
+  -- jump from here to 'label'
+  self:fixJmp(label, self:currentPosition())
 end
 
 
 function Compiler:codeJmpF (op)
   self:addCode(op)
   self:addCode(0)
-  return self:currentPosition()
+  return self:currentPosition()   -- position of the jump to be corrected
 end
 
 
 function Compiler:fixJmp2here (jmp)
-  self.code[jmp] = self:currentPosition()
+  -- jump from 'jmp' to here
+  self:fixJmp(self:currentPosition(), jmp)
 end
 
 
@@ -362,11 +370,12 @@ local function run (code, mem, stack)
       mem[id] = stack[top]
       top = top - 1
     elseif code[pc] == "jmp" then
-      pc = code[pc + 1]
+      pc = pc + 1
+      pc = pc + code[pc]
     elseif code[pc] == "jmpZ" then
       pc = pc + 1
       if stack[top] == 0 or stack[top] == nil then
-        pc = code[pc]
+        pc = pc + code[pc]
       end
       top = top - 1
     else error("unknown instruction")
@@ -378,7 +387,7 @@ end
 
 local input = io.read("a")
 local ast = parse(input)
-print(pt.pt(ast))
+-- print(pt.pt(ast))
 local code = compile(ast)
 print(pt.pt(code))
 local stack = {}
