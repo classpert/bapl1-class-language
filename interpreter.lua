@@ -17,33 +17,18 @@ local function I (msg)
   return lpeg.P(function () print(msg); return true end)
 end
 
+
+local function node (tag, ...)
+  local labels = table.pack(...)
+  local params = table.concat(labels, ", ")
+  local fields = string.gsub(params, "(%w+)", "%1 = %1")
+  local code = string.format(
+    "return function (%s) return {tag = '%s', %s} end",
+    params, tag, fields)
+  return assert(load(code))()
+end
+
 ----------------------------------------------------
-local function nodeNum (num)
-  return {tag = "number", val = tonumber(num)}
-end
-
-
-local function nodeUnOp (e)
-  return {tag = "unop", op = "-", e = e}
-end
-
-
-local function nodeVar (var)
-  return {tag = "variable", var = var}
-end
-
-local function nodeAssgn (id, exp)
-  return {tag = "assgn", id = id, exp = exp}
-end
-
-local function nodePrint (exp)
-  return {tag = "print", exp = exp}
-end
-
-local function nodeRet (exp)
-  return {tag = "ret", exp = exp}
-end
-
 local function nodeSeq (st1, st2)
   if st2 == nil then
     return st1
@@ -70,9 +55,7 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local numeral = lpeg.R("09")^1 / nodeNum  * space
-
-local reserved = {"return", "if"}
+local reserved = {"return", "if", "else", "while"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
@@ -87,7 +70,7 @@ ID = lpeg.Cmt(ID, function (_, _, id)   -- filter valid identifiers
                       return false  -- match will fail
                     end
                   end)
-local var = ID / nodeVar
+local var = ID / node("variable", "var")
 
 
 local function T (t)
@@ -104,19 +87,19 @@ end
 local opA = lpeg.C(lpeg.S"+-") * space
 local opM = lpeg.C(lpeg.S"*/%") * space
 local opE = lpeg.C("^") * space
-local opUMin = "-" * space
+local opUMin = lpeg.C("-") * space
 local opComp = lpeg.C(lpeg.P(">=") + "<=" + "==" + "!=" + "<" + ">") * space
 
 
 local numeral
 do
-  local digit = lpeg.R("09")
   local hexadigit = digit + lpeg.R("af", "AF")
   local hexanum = "0" * lpeg.S("xX") * hexadigit^1
   local exponent = lpeg.S("eE") * lpeg.S("+-")^-1 * digit^1
   local decimal = digit^1 * lpeg.P("." * digit^0)^-1 + "." * digit^1
   decimal = decimal * exponent^-1
-  numeral = ((hexanum + decimal) / nodeNum) * space
+  numeral = ((hexanum + decimal) / tonumber / node("number", "val"))
+  numeral = numeral * space
 end
 
 
@@ -145,14 +128,17 @@ grammar = lpeg.P{"prog",
   stats = stat * (T";" * stats)^-1 / nodeSeq,
   block = T"{" * stats * T";"^-1 * T"}",
   stat = block
-       + T"@" * exp / nodePrint
-       + ID * T"=" * exp / nodeAssgn
-       + Rw"return" * exp / nodeRet
+       + T"@" * exp / node("print", "exp")
+       + Rw"if" * exp * block * (Rw"else" * block)^-1
+           / node("if1", "cond", "th", "el")
+       + Rw"while" * exp * block / node("while1", "cond", "body")
+       + ID * T"=" * exp / node("assgn", "id", "exp")
+       + Rw"return" * exp / node("ret", "exp")
        + lpeg.Cc{tag = "nop"},   -- empty statement
   primary = numeral + T"(" * exp * T")" + var,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
-  prefixed = opUMin * factor / nodeUnOp + factor,
+  prefixed = opUMin * factor / node("unop", "op", "e") + factor,
   term = lpeg.Ct(prefixed * (opM * prefixed)^0) / foldBin,
   addexp = lpeg.Ct(term * (opA * term)^0) / foldBin,
   exp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
@@ -211,6 +197,29 @@ function Compiler:var2num (id)
 end
 
 
+function Compiler:currentPosition ()
+  return #self.code
+end
+
+
+function Compiler:codeJmpB (op, label)
+  self:addCode(op)
+  self:addCode(label)
+end
+
+
+function Compiler:codeJmpF (op)
+  self:addCode(op)
+  self:addCode(0)
+  return self:currentPosition()
+end
+
+
+function Compiler:fixJmp2here (jmp)
+  self.code[jmp] = self:currentPosition()
+end
+
+
 function Compiler:codeExp (ast)
   if ast.tag == "number" then
     self:addCode("push")
@@ -246,6 +255,25 @@ function Compiler:codeStat (ast)
     self:addCode("print")
   elseif ast.tag == "nop" then
     -- no operation, no code
+  elseif ast.tag == "while1" then
+    local ilabel = self:currentPosition()
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmpF("jmpZ")
+    self:codeStat(ast.body)
+    self:codeJmpB("jmp", ilabel)
+    self:fixJmp2here(jmp)
+  elseif ast.tag == "if1" then
+    self:codeExp(ast.cond)
+    local jmp = self:codeJmpF("jmpZ")
+    self:codeStat(ast.th)
+    if ast.el == nil then
+      self:fixJmp2here(jmp)
+    else
+      local jmp2 = self:codeJmpF("jmp")
+      self:fixJmp2here(jmp)
+      self:codeStat(ast.el)
+      self:fixJmp2here(jmp2)
+    end
   else error("invalid tree")
   end
 end
@@ -328,6 +356,14 @@ local function run (code, mem, stack)
       pc = pc + 1
       local id = code[pc]
       mem[id] = stack[top]
+      top = top - 1
+    elseif code[pc] == "jmp" then
+      pc = code[pc + 1]
+    elseif code[pc] == "jmpZ" then
+      pc = pc + 1
+      if stack[top] == 0 or stack[top] == nil then
+        pc = code[pc]
+      end
       top = top - 1
     else error("unknown instruction")
     end
