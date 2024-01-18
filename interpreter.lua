@@ -19,13 +19,15 @@ end
 
 
 local function node (tag, ...)
-  local labels = table.pack(...)
-  local params = table.concat(labels, ", ")
-  local fields = string.gsub(params, "(%w+)", "%1 = %1")
-  local code = string.format(
-    "return function (%s) return {tag = '%s', %s} end",
-    params, tag, fields)
-  return assert(load(code))()
+  local labels = {...}
+  return function (...)
+    local params = {...}
+    local t = {tag = tag}
+    for i = 1, #labels do
+      t[labels[i]] = params[i]
+    end
+    return t
+  end
 end
 
 ----------------------------------------------------
