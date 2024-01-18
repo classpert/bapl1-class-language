@@ -64,14 +64,14 @@ for i = 1, #reserved do   -- invert table
 end
 
 
-local ID = (lpeg.C(alpha * alphanum^0)) * space
+local ID = (lpeg.C(alpha * alphanum^0))
 ID = lpeg.Cmt(ID, function (_, _, id)   -- filter valid identifiers
                     if not reserved[id] then
                       return true, id
                     else  -- 'id' is a reserved word
                       return false  -- match will fail
                     end
-                  end)
+                  end) * space
 local var = ID / node("variable", "var")
 
 
