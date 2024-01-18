@@ -57,7 +57,8 @@ local maxmatch = 0
 local space = lpeg.V"space"
 
 
-local reserved = {"return", "if", "elseif", "else", "while", "and", "or"}
+local reserved = {"return", "if", "elseif", "else", "while", "and",
+                  "or", "new"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
@@ -116,6 +117,7 @@ local function foldBin (lst)
 end
 
 
+
 local function foldLog (op)
   return function (lst)
     local tree = lst[1]
@@ -129,6 +131,17 @@ end
 -- To be reused by 'if' and 'elseif'
 local nodeIf = node("if1", "cond", "th", "el")
 
+
+local function foldIndex (lst)
+  local tree = lst[1]
+  for i = 2, #lst do
+    tree = { tag = "indexed", array = tree, index = lst[i] }
+  end
+  return tree
+end
+
+
+local lhs = lpeg.V"lhs"
 local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
 local prefixed = lpeg.V"prefixed"
@@ -150,12 +163,16 @@ grammar = lpeg.P{"prog",
        + T"@" * exp / node("print", "exp")
        + Rw"if" * exp * block * restif / nodeIf
        + Rw"while" * exp * block / node("while1", "cond", "body")
-       + ID * T"=" * exp / node("assgn", "id", "exp")
+       + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp")
        + lpeg.Cc{tag = "nop"},   -- empty statement
   restif = (Rw"elseif" * exp * block * restif / nodeIf
          +  Rw"else" * block)^-1,
-  primary = numeral + T"(" * exp * T")" + var,
+  lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
+  primary = Rw"new" * T"[" * exp * T"]" / node("new", "size")
+          + numeral
+          + T"(" * exp * T")"
+          + lhs,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
   prefixed = unOp * prefixed / node("unop", "op", "e") + factor,
@@ -262,6 +279,13 @@ function Compiler:codeExp (ast)
   elseif ast.tag == "variable" then
     self:addCode("load")
     self:addCode(self:var2num(ast.var))
+  elseif ast.tag == "indexed" then
+    self:codeExp(ast.array)
+    self:codeExp(ast.index)
+    self:addCode("getarray")
+  elseif ast.tag == "new" then
+    self:codeExp(ast.size)
+    self:addCode("newarray")
   elseif ast.tag == "binop" then
     self:codeExp(ast.e1)
     self:codeExp(ast.e2)
@@ -276,11 +300,25 @@ function Compiler:codeExp (ast)
 end
 
 
-function Compiler:codeStat (ast)
-  if ast.tag == "assgn" then
+function Compiler:codeAssgn (ast)
+  local lhs = ast.lhs
+  if lhs.tag == "variable" then
     self:codeExp(ast.exp)
     self:addCode("store")
-    self:addCode(self:var2num(ast.id))
+    self:addCode(self:var2num(lhs.var))
+  elseif lhs.tag == "indexed" then
+    self:codeExp(lhs.array)
+    self:codeExp(lhs.index)
+    self:codeExp(ast.exp)
+    self:addCode("setarray")
+  else error("unkown tag")
+  end
+end
+  
+
+function Compiler:codeStat (ast)
+  if ast.tag == "assgn" then
+    self:codeAssgn(ast)
   elseif ast.tag == "seq" then
     self:codeStat(ast.st1)
     self:codeStat(ast.st2)
@@ -396,6 +434,20 @@ local function run (code, mem, stack)
       local id = code[pc]
       mem[id] = stack[top]
       top = top - 1
+    elseif code[pc] == "newarray" then
+      local size = stack[top]
+      stack[top] = { size = size }
+    elseif code[pc] == "getarray" then
+      local array = stack[top - 1]
+      local index = stack[top]
+      stack[top - 1] = array[index]
+      top = top - 1
+    elseif code[pc] == "setarray" then
+      local array = stack[top - 2]
+      local index = stack[top - 1]
+      local value = stack[top]
+      array[index] = value
+      top = top - 3
     elseif code[pc] == "jmp" then
       pc = pc + 1
       pc = pc + code[pc]
