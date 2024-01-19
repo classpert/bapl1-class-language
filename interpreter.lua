@@ -398,6 +398,9 @@ end
 
 
 function Compiler:codeFunction (ast)
+  if self.funcs[ast.name] then
+    err("function '%s' already defined", ast.name)
+  end
   local code = {}
   self.funcs[ast.name] = { code = code }
   self.code = code
