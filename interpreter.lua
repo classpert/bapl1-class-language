@@ -366,6 +366,14 @@ end
 -- convert boolean to integer
 local function b2n (n) return n and 1 or 0 end
 
+
+local function checkIndex (array, index)
+  if index <= 0 or index > array.size then
+    err("index out of range")
+  end
+end
+
+
 local function run (code, mem, stack)
   local pc = 1
   local top = 0
@@ -440,11 +448,13 @@ local function run (code, mem, stack)
     elseif code[pc] == "getarray" then
       local array = stack[top - 1]
       local index = stack[top]
+      checkIndex(array, index)
       stack[top - 1] = array[index]
       top = top - 1
     elseif code[pc] == "setarray" then
       local array = stack[top - 2]
       local index = stack[top - 1]
+      checkIndex(array, index)
       local value = stack[top]
       array[index] = value
       top = top - 3
