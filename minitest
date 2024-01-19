@@ -1,5 +1,6 @@
 #{#}   # empty long comment
 
+function main () {
 results = new [20];
 nresults = 0;
 
@@ -86,3 +87,4 @@ results[nresults] = a;
 @results;
 
 return 1000
+}

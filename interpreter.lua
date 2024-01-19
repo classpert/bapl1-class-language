@@ -58,21 +58,24 @@ local space = lpeg.V"space"
 
 
 local reserved = {"return", "if", "elseif", "else", "while", "and",
-                  "or", "new"}
+                  "or", "new", "function"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
 end
 
 
-local ID = (lpeg.C(alpha * alphanum^0))
-ID = lpeg.Cmt(ID, function (_, _, id)   -- filter valid identifiers
-                    if not reserved[id] then
-                      return true, id
-                    else  -- 'id' is a reserved word
-                      return false  -- match will fail
-                    end
-                  end) * space
+-- filter valid identifiers
+local function notreserved (_, _, id)
+  if not reserved[id] then
+    return true, id   -- match and (re)capture identifier
+  else  -- 'id' is a reserved word
+    return false  -- match will fail
+  end
+end
+
+local ID = lpeg.V"ID"
+
 local var = ID / node("variable", "var")
 
 
@@ -117,7 +120,6 @@ local function foldBin (lst)
 end
 
 
-
 local function foldLog (op)
   return function (lst)
     local tree = lst[1]
@@ -142,6 +144,7 @@ end
 
 
 local lhs = lpeg.V"lhs"
+local call = lpeg.V"call"
 local primary = lpeg.V"primary"
 local factor = lpeg.V"factor"
 local prefixed = lpeg.V"prefixed"
@@ -154,15 +157,23 @@ local stat = lpeg.V"stat"
 local restif = lpeg.V"restif"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
+local funcDec = lpeg.V"funcDec"
 
 grammar = lpeg.P{"prog",
-  prog = space * stats * -1,
+  prog = space * lpeg.Ct(funcDec^1) * -1,
+
+  funcDec = Rw"function" * ID * T"(" * T")" * block
+              / node("function", "name", "body"),
+
   stats = stat * (T";" * stats)^-1 / nodeSeq,
-  block = T"{" * stats * T";"^-1 * T"}",
+
+  block = T"{" * stats * T";"^-1 * T"}" / node("block", "body"),
+
   stat = block
        + T"@" * exp / node("print", "exp")
        + Rw"if" * exp * block * restif / nodeIf
        + Rw"while" * exp * block / node("while1", "cond", "body")
+       + call
        + lhs * T"=" * exp / node("assgn", "lhs", "exp")
        + Rw"return" * exp / node("ret", "exp")
        + lpeg.Cc{tag = "nop"},   -- empty statement
@@ -172,6 +183,7 @@ grammar = lpeg.P{"prog",
   primary = Rw"new" * lpeg.Ct((T"[" * exp * T"]")^1) / node("new", "sizes")
           + numeral
           + T"(" * exp * T")"
+          + call
           + lhs,
   -- exponentiation is right associative
   factor = lpeg.Ct(primary * (opE * factor)^-1) / foldBin,
@@ -181,11 +193,16 @@ grammar = lpeg.P{"prog",
   compexp = lpeg.Ct(addexp * (opComp * addexp)^0) / foldBin,
   andexp = lpeg.Ct(compexp * (Rw"and" * compexp)^0) / foldLog"and",
   exp = lpeg.Ct(andexp * (Rw"or" * andexp)^0) / foldLog"or",
+
+  call = ID * T"(" * T")" / node("call", "fname"),
+
   space = (lpeg.S(" \t\n") + comment)^0
             * lpeg.P(function (_,p)
                        maxmatch = math.max(maxmatch, p);
                        return true
-                     end)
+                     end),
+
+  ID = lpeg.Cmt(alpha * alphanum^0,  notreserved) * space
 }
 
 
@@ -208,7 +225,7 @@ local function parse (input)
 end
 
 ----------------------------------------------------
-local Compiler = { code = {}, vars = {}, nvars = 0 }
+local Compiler = { funcs = {}, vars = {}, nvars = 0 }
 
 function Compiler:addCode (op)
   local code = self.code
@@ -269,6 +286,16 @@ function Compiler:fixJmp2here (jmp)
 end
 
 
+function Compiler:codeCall (ast)
+  local func = self.funcs[ast.fname]
+  if not func then
+    error("undefined function " .. fname)
+  end
+  self:addCode("call")
+  self:addCode(func.code)
+end
+
+
 function Compiler:codeExp (ast)
   if ast.tag == "number" then
     self:addCode("push")
@@ -276,6 +303,8 @@ function Compiler:codeExp (ast)
   elseif ast.tag == "unop" then
     self:codeExp(ast.e)
     self:addCode(unOps[ast.op])
+  elseif ast.tag == "call" then
+    self:codeCall(ast)
   elseif ast.tag == "variable" then
     self:addCode("load")
     self:addCode(self:var2num(ast.var))
@@ -319,9 +348,20 @@ function Compiler:codeAssgn (ast)
 end
   
 
+function Compiler:codeBlock (ast)
+  self:codeStat(ast.body)
+end
+
+
 function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
+  elseif ast.tag == "call" then
+    self:codeCall(ast)
+    self:addCode("pop")
+    self:addCode(1)
+  elseif ast.tag == "block" then
+    self:codeBlock(ast)
   elseif ast.tag == "seq" then
     self:codeStat(ast.st1)
     self:codeStat(ast.st2)
@@ -356,12 +396,27 @@ function Compiler:codeStat (ast)
   end
 end
 
+
+function Compiler:codeFunction (ast)
+  local code = {}
+  self.funcs[ast.name] = { code = code }
+  self.code = code
+  self:codeStat(ast.body)
+  self:addCode("push")
+  self:addCode(0)
+  self:addCode("ret")
+end
+
+
 local function compile (ast)
-  Compiler:codeStat(ast)
-  Compiler:addCode("push")
-  Compiler:addCode(0)
-  Compiler:addCode("ret")
-  return Compiler.code
+  for i = 1, #ast do
+    Compiler:codeFunction(ast[i])
+  end
+  local main = Compiler.funcs["main"]
+  if not main then
+    error("no function 'main'")
+  end
+  return main.code
 end
 
 ----------------------------------------------------
@@ -406,9 +461,8 @@ local function printValue (value)
 end
 
 
-local function run (code, mem, stack)
+local function run (code, mem, stack, top)
   local pc = 1
-  local top = 0
   while true do
   --[[
   io.write("--> ")
@@ -417,7 +471,14 @@ local function run (code, mem, stack)
   --]]
     if code[pc] == "ret" then
       assert(top == 1)
-      return
+      return top
+    elseif code[pc] == "call" then
+      pc = pc + 1
+      local code = code[pc]
+      top = run(code, mem, stack, top)
+    elseif code[pc] == "pop" then
+      pc = pc + 1
+      top = top - code[pc]
     elseif code[pc] == "push" then
       pc = pc + 1
       top = top + 1
@@ -517,7 +578,7 @@ local function run (code, mem, stack)
       else
         top = top - 1
       end
-    else error("unknown instruction")
+    else error("unknown instruction " .. code[pc])
     end
     pc = pc + 1
   end
@@ -531,5 +592,5 @@ local code = compile(ast)
 -- print(pt.pt(code))
 local stack = {}
 local mem = {}
-run(code, mem, stack)
+run(code, mem, stack, 0)
 print(stack[1])
