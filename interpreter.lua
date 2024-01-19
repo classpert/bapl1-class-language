@@ -470,7 +470,6 @@ local function run (code, mem, stack, top)
   io.write("\n", code[pc], "\n")
   --]]
     if code[pc] == "ret" then
-      assert(top == 1)
       return top
     elseif code[pc] == "call" then
       pc = pc + 1

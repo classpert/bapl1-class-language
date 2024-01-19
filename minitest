@@ -1,90 +1,107 @@
 #{#}   # empty long comment
 
-function main () {
-results = new [20];
-nresults = 0;
-
 # To ease checking, any print of a non-zero value indicates an error,
 # except for the final 1000, which signals that the program ran until
 # its end.
+#
 
 # Expressions
+function test1 () {
+  #{
+     a long comment
+  #}
+  #
+  {_x_1 = (0.5 + .5) * 5.E+00 + 4e0 + -700.0e-2 ; ;; };
 
-#{
-   a long comment
-#}
-#
-{_x_1 = (0.5 + .5) * 5.E+00 + 4e0 + -700.0e-2 ; ;; };
+  {
+    y__2 =   ((3 >= 2) + (3 <= 2) + (3 == 2)
+         + (3 != 2) + (3 < 2) + (3 > 2))
+  };
 
-{
-  y__2 =   ((3 >= 2) + (3 <= 2) + (3 == 2)
-       + (3 != 2) + (3 < 2) + (3 > 2))
-};
+  return _x_1 - y__2 + 1 * !!10;;
 
-nresults = nresults + 1;
-results[nresults] = _x_1 - y__2 + 1 * !!10;;
-
+}
 
 
 # control structures
+function test2 () {
+  i = 1;
+  sum = 0;
+  while i <= 4 {
+    if i % 2 == 1 {
+      sum = sum + i;
+    }
+    elseif (i % 2) == 0 {
+      sum = sum + i * 2
+    }
+    else { @undef + 1 };   # force an error in this case
+    i = i + 1
+  };
 
-i = 1;
-sum = 0;
-while i <= 4 {
-  if i % 2 == 1 {
-    sum = sum + i;
-  }
-  elseif (i % 2) == 0 {
-    sum = sum + i * 2
-  }
-  else { @undef + 1 };   # force an error in this case
-  i = i + 1
-};
-nresults = nresults + 1;
-results[nresults] = sum - 16;
+  return sum - 16
+}
 
 
 # logical operators
-x = 10 and 20;
-x = x + (10 or undef + 1);   # short circuit avoids the error
-x = x + (10 and 2 * 10  or 30);   # check priorities
-x = x + (!!0 and 200 or 2 * 100 + 100);
-nresults = nresults + 1;
-results[nresults] =x - 350;
+function test3 () {
+  x = 10 and 20;
+  x = x + (10 or undef + 1);   # short circuit avoids the error
+  x = x + (10 and 2 * 10  or 30);   # check priorities
+  x = x + (!!0 and 200 or 2 * 100 + 100);
+  return x - 350
+}
 
 
 # arrays
-a = new [10];
-i = 1; while i <= 10 { a[i] = i^2; i = i + 1 };
+function test4 () {
+  a = new [10];
+  i = 1; while i <= 10 { a[i] = i^2; i = i + 1 };
 
-sum = 0;
-i = 10; while i >= 1 { sum = sum + a[i]; i = i - 1 };
+  sum = 0;
+  i = 10; while i >= 1 { sum = sum + a[i]; i = i - 1 };
 
-i = 1; while i <= 10 { a[i] = new [10]; i = i + 1 };
-a[1][7] = 14; a[7][2] = -23; a[4][2] = a;
-nresults = nresults + 1;
-results[nresults] = a[4][2][4][2][10 - 9][2*3 + 1] +
-                    a[7 or 23][1 and 2] - sum + 394;
+  i = 1; while i <= 10 { a[i] = new [10]; i = i + 1 };
+  a[1][7] = 14; a[7][2] = -23; a[4][2] = a;
+  nresults = nresults + 1;
+  results[nresults] = a[4][2][4][2][10 - 9][2*3 + 1] +
+                      a[7 or 23][1 and 2] - sum + 394;
 
-a = new [2][2][3];
-i = 1;
-while i <= 2 {
-  j = 1;
-  while j <= 2 {
-    k = 1;
-    while k <= 3 {
-      a[i][j][k] = 0;
-      k = k + 1
+  a = new [2][2][3];
+  i = 1;
+  while i <= 2 {
+    j = 1;
+    while j <= 2 {
+      k = 1;
+      while k <= 3 {
+        a[i][j][k] = 0;
+        k = k + 1
+      };
+      j = j + 1
     };
-    j = j + 1
+    i = i + 1
   };
-  i = i + 1
-};
+}
 
-nresults = nresults + 1;
-results[nresults] = a;
 
-@results;
+function main () {
+  results = new [20];
+  nresults = 0;
 
-return 1000
+  nresults = nresults + 1;
+  results[nresults] = test1();
+
+  nresults = nresults + 1;
+  results[nresults] = test2();
+
+
+  nresults = nresults + 1;
+  results[nresults] = test3();
+
+  test4();
+  nresults = nresults + 1;
+  results[nresults] = a;
+
+  @results;
+
+  return 1000
 }
