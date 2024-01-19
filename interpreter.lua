@@ -374,6 +374,23 @@ local function checkIndex (array, index)
 end
 
 
+local function printValue (value)
+  if type(value) ~= "table" then
+    io.write(tostring(value))
+  else
+    io.write("[")
+    if #value > 0 then
+      printValue(value[1])
+      for i = 2, #value do
+        io.write(", ")
+        printValue(value[i])
+      end
+    end
+    io.write("]")
+  end
+end
+
+
 local function run (code, mem, stack)
   local pc = 1
   local top = 0
@@ -430,7 +447,8 @@ local function run (code, mem, stack)
       stack[top - 1] = b2n(stack[top - 1] < stack[top])
       top = top - 1
     elseif code[pc] == "print" then
-      print(stack[top])
+      printValue(stack[top])
+      io.write("\n")
       top = top - 1
     elseif code[pc] == "load" then
       pc = pc + 1
