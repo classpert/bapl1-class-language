@@ -169,7 +169,7 @@ grammar = lpeg.P{"prog",
   restif = (Rw"elseif" * exp * block * restif / nodeIf
          +  Rw"else" * block)^-1,
   lhs = lpeg.Ct(var * (T"[" * exp * T"]")^0) / foldIndex,
-  primary = Rw"new" * T"[" * exp * T"]" / node("new", "size")
+  primary = Rw"new" * lpeg.Ct((T"[" * exp * T"]")^1) / node("new", "sizes")
           + numeral
           + T"(" * exp * T")"
           + lhs,
@@ -284,8 +284,11 @@ function Compiler:codeExp (ast)
     self:codeExp(ast.index)
     self:addCode("getarray")
   elseif ast.tag == "new" then
-    self:codeExp(ast.size)
+    for i = 1, #ast.sizes do
+      self:codeExp(ast.sizes[i])  -- compute size of each dimension
+    end
     self:addCode("newarray")
+    self:addCode(#ast.sizes)  -- number of dimensions
   elseif ast.tag == "binop" then
     self:codeExp(ast.e1)
     self:codeExp(ast.e2)
@@ -374,6 +377,18 @@ local function checkIndex (array, index)
 end
 
 
+local function createarray (dim, stack, top)
+  local size = stack[top - dim + 1]
+  local new = {size = size}
+  if dim > 1 then
+    for i = 1, size do
+      new[i] = createarray(dim - 1, stack, top)
+    end
+  end
+  return new
+end
+
+
 local function printValue (value)
   if type(value) ~= "table" then
     io.write(tostring(value))
@@ -397,10 +412,11 @@ local function run (code, mem, stack)
   while true do
   --[[
   io.write("--> ")
-  for i = 1, top do io.write(stack[i], " ") end
+  for i = 1, top do io.write(tostring(stack[i]), " ") end
   io.write("\n", code[pc], "\n")
   --]]
     if code[pc] == "ret" then
+      assert(top == 1)
       return
     elseif code[pc] == "push" then
       pc = pc + 1
@@ -461,8 +477,10 @@ local function run (code, mem, stack)
       mem[id] = stack[top]
       top = top - 1
     elseif code[pc] == "newarray" then
-      local size = stack[top]
-      stack[top] = { size = size }
+      pc = pc + 1
+      local dim = code[pc]   -- number of dimensions
+      stack[top - dim + 1] = createarray(dim, stack, top)
+      top = top - dim + 1
     elseif code[pc] == "getarray" then
       local array = stack[top - 1]
       local index = stack[top]

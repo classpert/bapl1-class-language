@@ -65,6 +65,24 @@ nresults = nresults + 1;
 results[nresults] = a[4][2][4][2][10 - 9][2*3 + 1] +
                     a[7 or 23][1 and 2] - sum + 394;
 
+a = new [2][2][3];
+i = 1;
+while i <= 2 {
+  j = 1;
+  while j <= 2 {
+    k = 1;
+    while k <= 3 {
+      a[i][j][k] = 0;
+      k = k + 1
+    };
+    j = j + 1
+  };
+  i = i + 1
+};
+
+nresults = nresults + 1;
+results[nresults] = a;
+
 @results;
 
 return 1000
