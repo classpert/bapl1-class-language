@@ -532,7 +532,10 @@ local function compile (ast)
 
   local main = Compiler.funcs["main"]
   if not main then
-    error("no function 'main'")
+    err("no function 'main'")
+  elseif #main.params ~= 0 then
+    err("function 'main' should have no parameters")
+  elseif #main.params ~= 0 then
   end
   return main.code
 end
