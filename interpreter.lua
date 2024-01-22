@@ -162,7 +162,7 @@ local funcDec = lpeg.V"funcDec"
 grammar = lpeg.P{"prog",
   prog = space * lpeg.Ct(funcDec^1) * -1,
 
-  funcDec = Rw"function" * ID * T"(" * T")" * block
+  funcDec = Rw"function" * ID * T"(" * T")" * (block + T";")
               / node("function", "name", "body"),
 
   stats = stat * (T";" * stats)^-1 / nodeSeq,
@@ -406,14 +406,26 @@ end
 
 
 function Compiler:codeFunction (ast)
-  self:checkName(ast.name)
-  local code = {}
-  self.funcs[ast.name] = { code = code }
-  self.code = code
-  self:codeStat(ast.body)
-  self:addCode("push")
-  self:addCode(0)
-  self:addCode("ret")
+  local name = ast.name
+  local func = self.funcs[name]   -- previous declaration (if any)
+  if not func then  -- no previous declaration?
+    self:checkName(name)   -- check conflict with global names
+    func = { code = {} }
+    self.funcs[name] = func  -- create declaration
+  end
+  -- Now function is declared
+
+  if ast.body then   -- is this a definition?
+    local code = func.code
+    if #code > 0 then   -- was there a previous definition?
+      err("function '%s' already defined", name)
+    end
+    self.code = code
+    self:codeStat(ast.body)
+    self:addCode("push")
+    self:addCode(0)
+    self:addCode("ret")
+  end
 end
 
 
@@ -421,6 +433,13 @@ local function compile (ast)
   for i = 1, #ast do
     Compiler:codeFunction(ast[i])
   end
+
+  for name, func in pairs(Compiler.funcs) do
+    if #func.code == 0 then
+      err("function '%s' declared by not defined", name)
+    end
+  end
+
   local main = Compiler.funcs["main"]
   if not main then
     error("no function 'main'")

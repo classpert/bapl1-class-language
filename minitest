@@ -5,6 +5,9 @@
 # its end.
 #
 
+function main ();   # forward declaration
+function main ();   # Ok to repeat
+
 # Expressions
 function test1 () {
   #{
@@ -23,23 +26,7 @@ function test1 () {
 }
 
 
-# control structures
-function test2 () {
-  i = 1;
-  sum = 0;
-  while i <= 4 {
-    if i % 2 == 1 {
-      sum = sum + i;
-    }
-    elseif (i % 2) == 0 {
-      sum = sum + i * 2
-    }
-    else { @undef + 1 };   # force an error in this case
-    i = i + 1
-  };
-
-  return sum - 16
-}
+function test2();
 
 
 # logical operators
@@ -104,4 +91,23 @@ function main () {
   @results;
 
   return 1000
+}
+
+
+# control structures
+function test2 () {
+  i = 1;
+  sum = 0;
+  while i <= 4 {
+    if i % 2 == 1 {
+      sum = sum + i;
+    }
+    elseif (i % 2) == 0 {
+      sum = sum + i * 2
+    }
+    else { @undef + 1 };   # force an error in this case
+    i = i + 1
+  };
+
+  return sum - 16
 }
