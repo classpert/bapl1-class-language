@@ -11,8 +11,8 @@ function main ();   # Ok to repeat
 
 # Expressions
 function test1 () {
-  var _x_1 = 0;
-  var y__2 = 0;
+  var _x_1;
+  var y__2;
   #{
      a long comment
   #}
@@ -36,7 +36,7 @@ function test3(a, b, c);
 
 # logical operators
 function test3 (a, b, c) {
-  x = a and b;
+  var x = a and b;
   x = x + (a or undef + 1);   # short circuit avoids the error
   x = x + (a and 2 * a or 30);   # check priorities
   x = x + (!!0 and 200 or 2 * 100 + 100);

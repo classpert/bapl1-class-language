@@ -175,7 +175,7 @@ grammar = lpeg.P{"prog",
 
   stat = block
        + T"@" * exp / node("print", "exp")
-       + Rw"var" * ID * T"=" * exp / node("local", "name", "init")
+       + Rw"var" * ID * (T"=" * exp)^-1 / node("local", "name", "init")
        + Rw"if" * exp * block * restif / nodeIf
        + Rw"while" * exp * block / node("while1", "cond", "body")
        + call
@@ -415,7 +415,12 @@ function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
   elseif ast.tag == "local" then
-    self:codeExp(ast.init)
+    if ast.init then
+      self:codeExp(ast.init)
+    else  -- no initialization
+      self:addCode("push")
+      self:addCode(0)
+    end
     self.locals[#self.locals + 1] = ast.name
   elseif ast.tag == "call" then
     self:codeCall(ast)
