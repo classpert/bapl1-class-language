@@ -244,9 +244,17 @@ local unOps = {["-"] = "neg", ["!"] = "not1"}
 local logOps = {["and"] = "jmpZP", ["or"] = "jmpNZP"}
 
 
+function Compiler:checkName (name)
+  if self.funcs[name] or self.vars[name] then
+    err("name '%s' already used", name)
+  end
+end
+
+
 function Compiler:var2num (id)
   local num = self.vars[id]
   if not num then   -- new variable?
+    self:checkName(id)
     num = self.nvars + 1
     self.nvars = num
     self.vars[id] = num
@@ -398,9 +406,7 @@ end
 
 
 function Compiler:codeFunction (ast)
-  if self.funcs[ast.name] then
-    err("function '%s' already defined", ast.name)
-  end
+  self:checkName(ast.name)
   local code = {}
   self.funcs[ast.name] = { code = code }
   self.code = code
