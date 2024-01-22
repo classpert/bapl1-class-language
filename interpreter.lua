@@ -167,7 +167,9 @@ grammar = lpeg.P{"prog",
   funcDec = Rw"function" * ID * T"(" * params * T")" * (block + T";")
               / node("function", "name", "params", "body"),
 
-  params = lpeg.Ct((ID * (T"," * ID)^0)^-1),
+  params = lpeg.Ct(ID * (T"," * ID)^0) * (T"=" * exp)^-1
+              / function (p, def) p.def = def; return p end
+         + lpeg.Cc({}),   -- no parameters; produce an empty list
 
   stats = stat * (T";" * stats)^-1 / nodeSeq,
 
@@ -320,15 +322,27 @@ end
 
 function Compiler:codeCall (ast)
   local func = self.funcs[ast.fname]
+  local def = false    -- true if calling with default argument
   if not func then
     error("undefined function " .. ast.fname)
   end
   local args = ast.args
   if #args ~= #func.params then
-    error("wrong number of arguments calling " .. ast.fname)
+    if #args == #func.params - 1 and func.params.def then
+      -- function has default for last parameter: will use the default
+      def = true
+    else
+      err("wrong number of arguments calling '%s'", ast.fname)
+    end
   end
   for i = 1, #args do
     self:codeExp(args[i])
+  end
+  if def then
+    self:addCode("push")
+    self:addCode(0)      -- initial value for last parameter
+    self:addCode("call")   -- call function to produce default argument
+    self:addCode(func.defcode)
   end
   self:addCode("call")
   self:addCode(func.code)
@@ -397,7 +411,7 @@ function Compiler:codeAssgn (ast)
   else error("unkown tag")
   end
 end
-  
+
 
 function Compiler:codeBlock (ast)
   local oldlevel = #self.locals
@@ -498,7 +512,8 @@ function Compiler:codeFunction (ast)
   end
   -- Now function is declared
 
-  if #ast.params ~= #func.params then
+  local params = ast.params
+  if #params ~= #func.params then
       err("function '%s': parameters don't match", name)
   end
 
@@ -507,14 +522,22 @@ function Compiler:codeFunction (ast)
     if #code > 0 then   -- was there a previous definition?
       err("function '%s' already defined", name)
     end
-    self:checkParams(ast.params)
+    self:checkParams(params)
     self.code = code
-    self.params = ast.params
+    self.params = params
     self:codeBlock(ast.body)
     self:addCode("push")
     self:addCode(0)
     self:addCode("ret")
     self:addCode(#self.locals + #self.params)
+
+    if params.def then   -- is there a default for the last parameter?
+      func.defcode = {}   -- code to compute default value
+      self.code = func.defcode
+      self:codeExp(params.def)  -- generate code to compute argument
+      self:addCode("ret")    -- return its value
+      self:addCode(1)        -- (remove "fake" value for the parameter)
+    end
   end
 end
 
@@ -587,7 +610,7 @@ local function run (code, mem, stack, top)
   local base = top
   while true do
   --[[
-  io.write("--> ")
+  io.write("(", base, ") --> ")
   for i = 1, top do io.write(tostring(stack[i]), " ") end
   io.write("\n", code[pc], "\n")
   --]]

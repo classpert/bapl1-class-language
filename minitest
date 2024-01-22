@@ -92,6 +92,12 @@ function id (x) {
    }
 }
 
+# Default argument: note that initial expression can use the other
+# parameters in its code
+function test5 (x, y, z = x * y) {
+  return x + z
+}
+
 
 function main () {
   results = new [20];
@@ -113,6 +119,10 @@ function main () {
 
   nresults = nresults + 1;
   results[nresults] = fact(6) - 720;
+
+  var res = test5(10, 20) - test5(10, 20, 10 * 20);
+  nresults = nresults + 1;
+  results[nresults] = res;
 
   @results;
 
@@ -137,3 +147,4 @@ function test2 () {
 
   return sum - 16
 }
+
