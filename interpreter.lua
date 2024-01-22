@@ -478,6 +478,16 @@ function Compiler:codeStat (ast)
 end
 
 
+function Compiler:checkParams (params)
+  for i = 1, #params do
+    for j = 1, i - 1 do
+      if params[j] == params[i] then
+        err("parameter '%s' already declared", params[j])
+      end
+    end
+  end
+end
+
 function Compiler:codeFunction (ast)
   local name = ast.name
   local func = self.funcs[name]   -- previous declaration (if any)
@@ -497,6 +507,7 @@ function Compiler:codeFunction (ast)
     if #code > 0 then   -- was there a previous definition?
       err("function '%s' already defined", name)
     end
+    self:checkParams(ast.params)
     self.code = code
     self.params = ast.params
     self:codeBlock(ast.body)
