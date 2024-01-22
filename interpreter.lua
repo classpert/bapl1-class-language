@@ -401,6 +401,8 @@ end
 
 function Compiler:codeBlock (ast)
   local oldlevel = #self.locals
+  local oldBlockLevel = self.blockLevel
+  self.blockLevel = oldlevel  -- initial level for variables in this block
   self:codeStat(ast.body)
   local n = #self.locals - oldlevel   -- number of new local variables
   if n > 0 then
@@ -408,6 +410,18 @@ function Compiler:codeBlock (ast)
     self:addCode("pop")
     self:addCode(n)
   end
+  self.blockLevel = oldBlockLevel
+end
+
+
+function Compiler:addVar (name)
+  -- check name conflict only with variables from the current block
+  for i = self.blockLevel + 1, #self.locals do
+    if self.locals[i] == name then
+      err("variable '%s' already declared", name)
+    end
+  end
+  self.locals[#self.locals + 1] = name
 end
 
 
@@ -421,7 +435,7 @@ function Compiler:codeStat (ast)
       self:addCode("push")
       self:addCode(0)
     end
-    self.locals[#self.locals + 1] = ast.name
+    self:addVar(ast.name)
   elseif ast.tag == "call" then
     self:codeCall(ast)
     self:addCode("pop")
@@ -485,7 +499,7 @@ function Compiler:codeFunction (ast)
     end
     self.code = code
     self.params = ast.params
-    self:codeStat(ast.body)
+    self:codeBlock(ast.body)
     self:addCode("push")
     self:addCode(0)
     self:addCode("ret")

@@ -85,7 +85,12 @@ function fact (n) {
 }
 
 
-function id (x) { return x }
+function id (x) {
+   var x = x;
+   { var x = x;   # Ok to redefine variable in an inner block
+     return x
+   }
+}
 
 
 function main () {
