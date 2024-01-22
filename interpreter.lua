@@ -58,7 +58,7 @@ local space = lpeg.V"space"
 
 
 local reserved = {"return", "if", "elseif", "else", "while", "and",
-                  "or", "new", "function"}
+                  "or", "new", "function", "var"}
 for i = 1, #reserved do   -- invert table
   reserved[reserved[i]] = true
   reserved[i] = nil
@@ -158,12 +158,16 @@ local restif = lpeg.V"restif"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 local funcDec = lpeg.V"funcDec"
+local args = lpeg.V"args"
+local params = lpeg.V"params"
 
 grammar = lpeg.P{"prog",
   prog = space * lpeg.Ct(funcDec^1) * -1,
 
-  funcDec = Rw"function" * ID * T"(" * T")" * (block + T";")
-              / node("function", "name", "body"),
+  funcDec = Rw"function" * ID * T"(" * params * T")" * (block + T";")
+              / node("function", "name", "params", "body"),
+
+  params = lpeg.Ct((ID * (T"," * ID)^0)^-1),
 
   stats = stat * (T";" * stats)^-1 / nodeSeq,
 
@@ -171,6 +175,7 @@ grammar = lpeg.P{"prog",
 
   stat = block
        + T"@" * exp / node("print", "exp")
+       + Rw"var" * ID * T"=" * exp / node("local", "name", "init")
        + Rw"if" * exp * block * restif / nodeIf
        + Rw"while" * exp * block / node("while1", "cond", "body")
        + call
@@ -194,7 +199,9 @@ grammar = lpeg.P{"prog",
   andexp = lpeg.Ct(compexp * (Rw"and" * compexp)^0) / foldLog"and",
   exp = lpeg.Ct(andexp * (Rw"or" * andexp)^0) / foldLog"or",
 
-  call = ID * T"(" * T")" / node("call", "fname"),
+  call = ID * T"(" * args * T")" / node("call", "fname", "args"),
+
+  args = lpeg.Ct((exp * (T"," * exp)^0)^-1),
 
   space = (lpeg.S(" \t\n") + comment)^0
             * lpeg.P(function (_,p)
@@ -225,7 +232,7 @@ local function parse (input)
 end
 
 ----------------------------------------------------
-local Compiler = { funcs = {}, vars = {}, nvars = 0 }
+local Compiler = { funcs = {}, vars = {}, nvars = 0, locals = {} }
 
 function Compiler:addCode (op)
   local code = self.code
@@ -294,10 +301,34 @@ function Compiler:fixJmp2here (jmp)
 end
 
 
+function Compiler:findLocal (name)
+  local vars = self.locals
+  for i = #vars, 1, -1 do
+    if name == vars[i] then
+      return i
+    end
+  end
+  local params = self.params
+  for i = 1, #params do
+    if name == params[i] then
+      return -(#params - i)
+    end
+  end
+  return false   -- not found
+end
+
+
 function Compiler:codeCall (ast)
   local func = self.funcs[ast.fname]
   if not func then
-    error("undefined function " .. fname)
+    error("undefined function " .. ast.fname)
+  end
+  local args = ast.args
+  if #args ~= #func.params then
+    error("wrong number of arguments calling " .. ast.fname)
+  end
+  for i = 1, #args do
+    self:codeExp(args[i])
   end
   self:addCode("call")
   self:addCode(func.code)
@@ -314,8 +345,14 @@ function Compiler:codeExp (ast)
   elseif ast.tag == "call" then
     self:codeCall(ast)
   elseif ast.tag == "variable" then
-    self:addCode("load")
-    self:addCode(self:var2num(ast.var))
+    local idx = self:findLocal(ast.var)
+    if idx then
+      self:addCode("loadL")
+      self:addCode(idx)
+    else
+      self:addCode("load")
+      self:addCode(self:var2num(ast.var))
+    end
   elseif ast.tag == "indexed" then
     self:codeExp(ast.array)
     self:codeExp(ast.index)
@@ -344,8 +381,14 @@ function Compiler:codeAssgn (ast)
   local lhs = ast.lhs
   if lhs.tag == "variable" then
     self:codeExp(ast.exp)
-    self:addCode("store")
-    self:addCode(self:var2num(lhs.var))
+    local idx = self:findLocal(lhs.var)
+    if idx then
+      self:addCode("storeL")
+      self:addCode(idx)
+    else
+      self:addCode("store")
+      self:addCode(self:var2num(lhs.var))
+    end
   elseif lhs.tag == "indexed" then
     self:codeExp(lhs.array)
     self:codeExp(lhs.index)
@@ -357,13 +400,23 @@ end
   
 
 function Compiler:codeBlock (ast)
+  local oldlevel = #self.locals
   self:codeStat(ast.body)
+  local n = #self.locals - oldlevel   -- number of new local variables
+  if n > 0 then
+    for i = 1, n do table.remove(self.locals) end
+    self:addCode("pop")
+    self:addCode(n)
+  end
 end
 
 
 function Compiler:codeStat (ast)
   if ast.tag == "assgn" then
     self:codeAssgn(ast)
+  elseif ast.tag == "local" then
+    self:codeExp(ast.init)
+    self.locals[#self.locals + 1] = ast.name
   elseif ast.tag == "call" then
     self:codeCall(ast)
     self:addCode("pop")
@@ -376,6 +429,7 @@ function Compiler:codeStat (ast)
   elseif ast.tag == "ret" then
     self:codeExp(ast.exp)
     self:addCode("ret")
+    self:addCode(#self.locals + #self.params)
   elseif ast.tag == "print" then
     self:codeExp(ast.exp)
     self:addCode("print")
@@ -410,10 +464,14 @@ function Compiler:codeFunction (ast)
   local func = self.funcs[name]   -- previous declaration (if any)
   if not func then  -- no previous declaration?
     self:checkName(name)   -- check conflict with global names
-    func = { code = {} }
+    func = { code = {}, params = ast.params }
     self.funcs[name] = func  -- create declaration
   end
   -- Now function is declared
+
+  if #ast.params ~= #func.params then
+      err("function '%s': parameters don't match", name)
+  end
 
   if ast.body then   -- is this a definition?
     local code = func.code
@@ -421,10 +479,12 @@ function Compiler:codeFunction (ast)
       err("function '%s' already defined", name)
     end
     self.code = code
+    self.params = ast.params
     self:codeStat(ast.body)
     self:addCode("push")
     self:addCode(0)
     self:addCode("ret")
+    self:addCode(#self.locals + #self.params)
   end
 end
 
@@ -491,6 +551,7 @@ end
 
 local function run (code, mem, stack, top)
   local pc = 1
+  local base = top
   while true do
   --[[
   io.write("--> ")
@@ -498,6 +559,9 @@ local function run (code, mem, stack, top)
   io.write("\n", code[pc], "\n")
   --]]
     if code[pc] == "ret" then
+      local n = code[pc + 1]    -- number of active local variables
+      stack[top - n] = stack[top]
+      top = top - n
       return top
     elseif code[pc] == "call" then
       pc = pc + 1
@@ -553,6 +617,16 @@ local function run (code, mem, stack, top)
     elseif code[pc] == "print" then
       printValue(stack[top])
       io.write("\n")
+      top = top - 1
+    elseif code[pc] == "loadL" then
+      pc = pc + 1
+      local n = code[pc]
+      top = top + 1
+      stack[top] = stack[base + n]
+    elseif code[pc] == "storeL" then
+      pc = pc + 1
+      local n = code[pc]
+      stack[base + n] = stack[top]
       top = top - 1
     elseif code[pc] == "load" then
       pc = pc + 1
